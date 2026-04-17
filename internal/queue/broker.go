@@ -33,13 +33,14 @@ func redisJobIDKey(queueName string) string {
 // priorityScore computes the Redis sorted-set score for a job.
 // Lower score = dequeued first by ZPOPMIN.
 //
-//	score = -(priority × 1_000_000_000_000) + scheduledAt.UnixNano
+//	score = -(priority × 1_000_000_000_000_000) + scheduledAt.UnixNano
 //
-// Because priority 10 yields -10e12, it will always sort before priority 1
-// at -1e12. Within the same priority, earlier scheduled_at yields a smaller
-// (more negative) nano component.
+// The 1e15 multiplier ensures the priority band (up to 10×1e15 = 1e16 ns ≈ 285 years)
+// dominates any realistic scheduled_at difference, so a higher-priority job
+// always sorts before a lower-priority job regardless of schedule time.
+// Within the same priority, earlier scheduled_at yields a lower score.
 func priorityScore(priority int, scheduledAt time.Time) float64 {
-	return float64(-priority)*1e12 + float64(scheduledAt.UnixNano())
+	return float64(-priority)*1e15 + float64(scheduledAt.UnixNano())
 }
 
 // Broker defines the interface for the Redis-backed queue operations.
@@ -190,7 +191,7 @@ func (b *RedisBroker) PromoteDelayed(ctx context.Context) (int64, error) {
 			local scheduledNs = tonumber(parts[4]) or 0
 
 			-- Score formula mirrors Go's priorityScore()
-			local score = (-priority * 1e12) + scheduledNs
+			local score = (-priority * 1e15) + scheduledNs
 
 			redis.call("ZADD", "queue:" .. queueName, score, jobID)
 			redis.call("ZREM", delayed, member)
