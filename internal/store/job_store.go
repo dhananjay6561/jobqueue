@@ -447,6 +447,11 @@ func (db *DB) GetStats(ctx context.Context) (JobStats, error) {
 		return stats, fmt.Errorf("query DLQ count: %w", err)
 	}
 
+	// Count of currently active workers.
+	if err := db.pool.QueryRow(ctx, queryActiveWorkerCount).Scan(&stats.ActiveWorkers); err != nil {
+		return stats, fmt.Errorf("query active worker count: %w", err)
+	}
+
 	return stats, nil
 }
 

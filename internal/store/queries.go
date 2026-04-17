@@ -228,4 +228,8 @@ const (
 	// queryDLQCount returns the total number of un-requeued DLQ entries.
 	queryDLQCount = `
 		SELECT COUNT(*) FROM dead_letter_jobs WHERE requeued = FALSE`
+
+	// queryActiveWorkerCount returns the number of currently active workers.
+	queryActiveWorkerCount = `
+		SELECT COUNT(*) FROM workers WHERE status = 'active'`
 )
