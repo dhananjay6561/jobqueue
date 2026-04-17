@@ -233,7 +233,9 @@ func (p *Pool) runWorker(ctx context.Context, workerID string) {
 		// Record what job this worker is processing.
 		currentJobID.Store(&id)
 
-		p.processJob(ctx, workerID, id, log)
+		if p.processJob(ctx, workerID, id, log) {
+			failed++
+		}
 
 		currentJobID.Store(nil)
 
@@ -258,21 +260,22 @@ func (p *Pool) dequeueNextJob(ctx context.Context) (string, error) {
 
 // processJob hydrates the full job from PostgreSQL, dispatches it to the
 // registered handler, and handles success/failure/retry/DLQ transitions.
-func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, log zerolog.Logger) {
+// Returns true if the job failed (handler error or no handler), false on success.
+func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, log zerolog.Logger) bool {
 	log = log.With().Str("job_id", id.String()).Logger()
 
 	// Hydrate the job from PostgreSQL.
 	job, err := p.store.GetJob(ctx, id)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to hydrate job from store")
-		return
+		return false
 	}
 
 	// Mark the job as running.
 	job, err = p.store.MarkJobStarted(ctx, id, workerID)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to mark job as started")
-		return
+		return false
 	}
 
 	p.publishEvent(EventJobStarted, job, workerID)
@@ -284,7 +287,7 @@ func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, lo
 		errMsg := fmt.Sprintf("no handler registered for job type %q", job.Type)
 		log.Error().Msg(errMsg)
 		p.handleJobFailure(ctx, job, workerID, errMsg, log)
-		return
+		return true
 	}
 
 	// Execute the handler with a per-job context so it can be cancelled on
@@ -295,16 +298,17 @@ func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, lo
 		// Success path.
 		if _, err := p.store.MarkJobCompleted(ctx, id); err != nil {
 			log.Error().Err(err).Msg("failed to mark job completed")
-			return
+			return false
 		}
 		p.publishEvent(EventJobCompleted, job, workerID)
 		log.Info().Str("type", job.Type).Msg("job completed")
-		return
+		return false
 	}
 
 	// Failure path.
 	log.Warn().Err(handlerErr).Str("type", job.Type).Int("attempts", job.Attempts).Msg("job failed")
 	p.handleJobFailure(ctx, job, workerID, handlerErr.Error(), log)
+	return true
 }
 
 // handleJobFailure decides whether to retry or move to DLQ based on the
