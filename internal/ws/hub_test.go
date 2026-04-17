@@ -23,8 +23,9 @@ type testClient struct {
 }
 
 // registerTestClient inserts a fake client directly into the hub's register
-// channel and blocks until the hub processes it.
-func registerTestClient(hub *Hub) *testClient {
+// channel and blocks until the hub processes it. It returns both the testClient
+// wrapper and the actual *Client pointer so callers can use it for unregistration.
+func registerTestClient(hub *Hub) (*testClient, *Client) {
 	tc := &testClient{
 		hub:        hub,
 		send:       make(chan []byte, outboundBufferSize),
@@ -39,7 +40,7 @@ func registerTestClient(hub *Hub) *testClient {
 	hub.register <- client
 	// Give the hub's goroutine time to process the registration.
 	time.Sleep(5 * time.Millisecond)
-	return tc
+	return tc, client
 }
 
 func startHub(t *testing.T) *Hub {
@@ -57,11 +58,11 @@ func TestHub_ClientCount(t *testing.T) {
 
 	assert.Equal(t, 0, hub.ClientCount(), "no clients at start")
 
-	tc := registerTestClient(hub)
+	_, client := registerTestClient(hub)
 	assert.Equal(t, 1, hub.ClientCount(), "one client after register")
 
-	// Unregister by closing the send channel.
-	hub.unregister <- &Client{hub: hub, send: tc.send, remoteAddr: tc.remoteAddr}
+	// Unregister using the exact same pointer that was registered.
+	hub.unregister <- client
 	time.Sleep(5 * time.Millisecond)
 	assert.Equal(t, 0, hub.ClientCount(), "zero clients after unregister")
 }
@@ -69,7 +70,7 @@ func TestHub_ClientCount(t *testing.T) {
 func TestHub_Publish_SingleClient(t *testing.T) {
 	hub := startHub(t)
 
-	tc := registerTestClient(hub)
+	tc, _ := registerTestClient(hub)
 
 	hub.Publish(queue.Event{
 		Type:    queue.EventJobEnqueued,
@@ -96,7 +97,7 @@ func TestHub_Publish_MultipleClients(t *testing.T) {
 	const clientCount = 5
 	clients := make([]*testClient, clientCount)
 	for i := range clients {
-		clients[i] = registerTestClient(hub)
+		clients[i], _ = registerTestClient(hub)
 	}
 
 	hub.Publish(queue.Event{Type: queue.EventStatsUpdate, Payload: "test"})
@@ -125,7 +126,7 @@ func TestHub_Publish_MultipleClients(t *testing.T) {
 
 func TestHub_Publish_SetsTimestamp(t *testing.T) {
 	hub := startHub(t)
-	tc := registerTestClient(hub)
+	tc, _ := registerTestClient(hub)
 
 	before := time.Now().UnixMilli()
 	hub.Publish(queue.Event{Type: queue.EventWorkerHeartbeat})
