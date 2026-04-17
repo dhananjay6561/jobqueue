@@ -1,0 +1,112 @@
+version: "3.9"
+
+# ─── Named volumes ────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+
+# ─── Networks ────────────────────────────────────────────────────────────────
+networks:
+  jobqueue_net:
+    driver: bridge
+
+services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: jobqueue_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jobqueue
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: jobqueue
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - jobqueue_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobqueue -d jobqueue"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: jobqueue_redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - jobqueue_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  # ─── Application ────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobqueue_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Server
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      SERVER_READ_TIMEOUT: 15s
+      SERVER_WRITE_TIMEOUT: 30s
+      SERVER_IDLE_TIMEOUT: 120s
+      RATE_LIMIT_RPS: 100
+      RATE_LIMIT_BURST: 20
+
+      # Database
+      DATABASE_DSN: postgres://jobqueue:secret@postgres:5432/jobqueue?sslmode=disable
+      DB_MAX_CONNS: 20
+      DB_MIN_CONNS: 2
+      DB_MAX_CONN_LIFETIME: 30m
+      DB_MAX_CONN_IDLE_TIME: 5m
+
+      # Redis
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      REDIS_DIAL_TIMEOUT: 5s
+      REDIS_READ_TIMEOUT: 3s
+      REDIS_WRITE_TIMEOUT: 3s
+
+      # Worker pool
+      WORKER_COUNT: 5
+      WORKER_HEARTBEAT_INTERVAL: 10s
+      WORKER_POLL_INTERVAL: 1s
+      WORKER_SHUTDOWN_TIMEOUT: 30s
+
+      # Retry
+      RETRY_BASE_DELAY: 5s
+      RETRY_MAX_DELAY: 1h
+      RETRY_DEFAULT_MAX_ATTEMPTS: 5
+    ports:
+      - "8080:8080"
+    networks:
+      - jobqueue_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
