@@ -96,10 +96,11 @@ func main() {
 	go hub.Run()
 
 	// ── Stats broadcast ticker (every 5 seconds) ───────────────────────────────
+	statsCtx, statsCancel := context.WithCancel(ctx)
 	statsDone := make(chan struct{})
 	go func() {
 		defer close(statsDone)
-		runStatsBroadcast(ctx, dbStore, hub)
+		runStatsBroadcast(statsCtx, dbStore, hub)
 	}()
 
 	// ── Worker pool ────────────────────────────────────────────────────────────
@@ -175,7 +176,11 @@ func main() {
 		log.Error().Err(err).Msg("HTTP server shutdown error")
 	}
 
-	// 2. Stop the worker pool (waits for in-flight jobs to finish).
+	// 2. Stop the stats broadcast goroutine.
+	statsCancel()
+	<-statsDone
+
+	// 3. Stop the worker pool (waits for in-flight jobs to finish).
 	log.Info().Msg("stopping worker pool")
 	workerPool.Shutdown()
 
