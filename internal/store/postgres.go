@@ -7,6 +7,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -35,8 +36,8 @@ func New(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 		return nil, fmt.Errorf("parse database DSN: %w", err)
 	}
 
-	poolCfg.MaxConns = int32(cfg.MaxConns)
-	poolCfg.MinConns = int32(cfg.MinConns)
+	poolCfg.MaxConns = clampInt32(cfg.MaxConns)
+	poolCfg.MinConns = clampInt32(cfg.MinConns)
 	poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
 	poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 
@@ -111,4 +112,15 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 // transactions initiated at a higher level.
 func (db *DB) Pool() *pgxpool.Pool {
 	return db.pool
+}
+
+// clampInt32 converts n to int32, clamping to [0, math.MaxInt32] to prevent overflow.
+func clampInt32(n int) int32 {
+	if n < 0 {
+		return 0
+	}
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(n) //nolint:gosec
 }
