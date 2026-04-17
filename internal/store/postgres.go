@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -85,15 +87,25 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 		return fmt.Errorf("read migration directory %q: %w", migrationDir, err)
 	}
 
+	absDir, err := filepath.Abs(migrationDir)
+	if err != nil {
+		return fmt.Errorf("resolve migration directory %q: %w", migrationDir, err)
+	}
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 
 		name := entry.Name()
-		path := migrationDir + "/" + name
+		path := filepath.Join(absDir, name)
 
-		sql, err := os.ReadFile(path)
+		// Ensure the resolved path stays within the migration directory.
+		if !strings.HasPrefix(path, absDir+string(filepath.Separator)) {
+			return fmt.Errorf("migration file %q escapes migration directory", name)
+		}
+
+		sql, err := os.ReadFile(path) //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("read migration %q: %w", path, err)
 		}
