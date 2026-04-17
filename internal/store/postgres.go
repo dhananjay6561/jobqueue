@@ -105,7 +105,7 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 			return fmt.Errorf("migration file %q escapes migration directory", name)
 		}
 
-		sql, err := os.ReadFile(path) //nolint:gosec
+		sql, err := os.ReadFile(path) // #nosec G304 -- path is validated against absDir above
 		if err != nil {
 			return fmt.Errorf("read migration %q: %w", path, err)
 		}
