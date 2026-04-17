@@ -264,15 +264,14 @@ func (p *Pool) dequeueNextJob(ctx context.Context) (string, error) {
 func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, log zerolog.Logger) bool {
 	log = log.With().Str("job_id", id.String()).Logger()
 
-	// Hydrate the job from PostgreSQL.
-	job, err := p.store.GetJob(ctx, id)
-	if err != nil {
+	// Verify the job exists in PostgreSQL before claiming it.
+	if _, err := p.store.GetJob(ctx, id); err != nil {
 		log.Error().Err(err).Msg("failed to hydrate job from store")
 		return false
 	}
 
 	// Mark the job as running.
-	job, err = p.store.MarkJobStarted(ctx, id, workerID)
+	job, err := p.store.MarkJobStarted(ctx, id, workerID)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to mark job as started")
 		return false
