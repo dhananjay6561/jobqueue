@@ -93,10 +93,18 @@ func (b *RedisBroker) Enqueue(ctx context.Context, job *Job) error {
 	now := time.Now()
 
 	if job.ScheduledAt.After(now) {
-		// Delayed queue: score = Unix seconds so PromoteDelayed can use ZRANGEBYSCORE.
+		// Encode routing metadata into the member so PromoteDelayed can reconstruct
+		// the queue name, priority, and scheduled time without a DB round-trip.
+		// Format: "jobID|queueName|priority|scheduledNano"
+		member := fmt.Sprintf("%s|%s|%d|%d",
+			job.ID.String(),
+			job.QueueName,
+			job.Priority,
+			job.ScheduledAt.UnixNano(),
+		)
 		err := b.client.ZAdd(ctx, redisDelayedKey, redis.Z{
 			Score:  float64(job.ScheduledAt.Unix()),
-			Member: job.ID.String(),
+			Member: member,
 		}).Err()
 		if err != nil {
 			return fmt.Errorf("enqueue delayed job %s: %w", job.ID, err)
@@ -196,28 +204,6 @@ func (b *RedisBroker) PromoteDelayed(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("promote delayed jobs: %w", err)
 	}
 	return result, nil
-}
-
-// EnqueueDelayedWithMeta enqueues a delayed job using a compound member string
-// that encodes the routing metadata so the Lua promoter does not need a DB
-// round-trip.
-func (b *RedisBroker) EnqueueDelayedWithMeta(ctx context.Context, job *Job) error {
-	// Encode routing into the member: "jobID|queueName|priority|scheduledNano"
-	member := fmt.Sprintf("%s|%s|%d|%d",
-		job.ID.String(),
-		job.QueueName,
-		job.Priority,
-		job.ScheduledAt.UnixNano(),
-	)
-
-	err := b.client.ZAdd(ctx, redisDelayedKey, redis.Z{
-		Score:  float64(job.ScheduledAt.Unix()),
-		Member: member,
-	}).Err()
-	if err != nil {
-		return fmt.Errorf("enqueue delayed job with meta %s: %w", job.ID, err)
-	}
-	return nil
 }
 
 // QueueDepth returns the number of items currently in the named active queue.
