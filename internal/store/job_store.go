@@ -381,7 +381,7 @@ func (db *DB) MarkWorkerStopped(ctx context.Context, workerID string) error {
 
 // ListWorkers returns all (or only active) workers ordered by start time.
 func (db *DB) ListWorkers(ctx context.Context, activeOnly bool) ([]*queue.WorkerInfo, error) {
-	rows, err := db.pool.Query(ctx, queryListWorkers, !activeOnly)
+	rows, err := db.pool.Query(ctx, queryListWorkers, activeOnly)
 	if err != nil {
 		return nil, fmt.Errorf("list workers: %w", err)
 	}
