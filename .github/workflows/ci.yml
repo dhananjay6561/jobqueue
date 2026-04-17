@@ -11,6 +11,9 @@ permissions:
 
 env:
   GO_VERSION: "1.26.2"
+  # golangci-lint latest stable is built with Go 1.24 and cannot parse Go 1.26
+  # stdlib files. Use Go 1.23 for lint so the GOROOT stays within 1.24's range.
+  GO_VERSION_LINT: "1.23"
 
 jobs:
   lint:
@@ -20,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version: ${{ env.GO_VERSION_LINT }}
           cache: true
       - run: go mod download
       - name: golangci-lint
