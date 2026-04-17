@@ -29,12 +29,14 @@ func (p RetryPolicy) NextDelay(attempt int) time.Duration {
 	}
 
 	multiplier := math.Pow(2, float64(attempt-1))
-	delay := time.Duration(float64(p.BaseDelay) * multiplier)
+	delayF := float64(p.BaseDelay) * multiplier
 
-	if delay > p.MaxDelay {
+	// Guard against Inf or NaN from large exponents before converting to int64.
+	if math.IsInf(delayF, 1) || math.IsNaN(delayF) || delayF >= float64(p.MaxDelay) {
 		return p.MaxDelay
 	}
-	return delay
+
+	return time.Duration(delayF)
 }
 
 // ShouldRetry returns true when the job has not yet exhausted its retry budget.
