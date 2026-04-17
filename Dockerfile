@@ -1,6 +1,6 @@
 # ─── Stage 1: Builder ────────────────────────────────────────────────────────
 # Uses the official Go image to compile a statically linked binary.
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install git for modules that use go-import meta tags, and ca-certificates
 # so the final image can reach TLS endpoints.
