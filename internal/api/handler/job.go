@@ -217,6 +217,35 @@ func (h *JobHandler) EnqueueJobBatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusCreated, created)
 }
 
+// ListJobsCursor handles GET /api/v1/jobs/cursor — keyset pagination.
+// Stable across concurrent inserts. Query params same as ListJobs plus:
+//   - cursor: opaque token from a previous response's next_cursor field.
+func (h *JobHandler) ListJobsCursor(w http.ResponseWriter, r *http.Request) {
+	filter := store.JobCursorFilter{
+		Status:    queryParamString(r, "status"),
+		Type:      queryParamString(r, "type"),
+		QueueName: queryParamString(r, "queue"),
+		Cursor:    queryParamString(r, "cursor"),
+		Limit:     queryParamInt(r, "limit", 20),
+	}
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		filter.APIKeyID = &key.ID
+	}
+
+	page, err := h.store.ListJobsCursor(r.Context(), filter)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to list jobs: "+err.Error())
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"items":       page.Items,
+		"next_cursor": page.NextCursor,
+		"has_more":    page.HasMore,
+		"limit":       page.Limit,
+	})
+}
+
 // ListJobs handles GET /api/v1/jobs.
 //
 // Query parameters:

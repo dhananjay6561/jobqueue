@@ -5,9 +5,11 @@ package store
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,6 +51,25 @@ type Page[T any] struct {
 	Offset     int
 }
 
+// CursorPage wraps a keyset-paginated result set.
+// NextCursor is empty when there are no more pages.
+type CursorPage[T any] struct {
+	Items      []T
+	NextCursor string // base64-encoded "created_at|id"
+	HasMore    bool
+	Limit      int
+}
+
+// JobCursorFilter defines filters + cursor for keyset pagination.
+type JobCursorFilter struct {
+	Status    string
+	Type      string
+	QueueName string
+	APIKeyID  *uuid.UUID
+	Cursor    string // opaque token from a previous CursorPage.NextCursor
+	Limit     int
+}
+
 // JobStats holds aggregated queue metrics returned by the stats endpoint and
 // broadcast over WebSocket. Field names use snake_case json tags to match the
 // React frontend's QueueStats interface exactly.
@@ -75,6 +96,7 @@ type JobStorer interface {
 	CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.Job, error)
 	GetJob(ctx context.Context, id uuid.UUID) (*queue.Job, error)
 	ListJobs(ctx context.Context, filter JobFilter) (Page[*queue.Job], error)
+	ListJobsCursor(ctx context.Context, filter JobCursorFilter) (CursorPage[*queue.Job], error)
 	MarkJobStarted(ctx context.Context, id uuid.UUID, workerID string) (*queue.Job, error)
 	MarkJobCompleted(ctx context.Context, id uuid.UUID, result json.RawMessage) (*queue.Job, error)
 	GetJobResult(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
@@ -200,6 +222,78 @@ func (db *DB) CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.J
 		result = append(result, j)
 	}
 	return result, rows.Err()
+}
+
+// ListJobsCursor returns a keyset-paginated page of jobs.
+// Pass the NextCursor from a previous response to fetch the next page.
+func (db *DB) ListJobsCursor(ctx context.Context, f JobCursorFilter) (CursorPage[*queue.Job], error) {
+	if f.Limit <= 0 {
+		f.Limit = 20
+	}
+	if f.Limit > 100 {
+		f.Limit = 100
+	}
+
+	statusParam := nullableString(f.Status)
+	typeParam := nullableString(f.Type)
+	queueParam := nullableString(f.QueueName)
+
+	var cursorTime *time.Time
+	var cursorID *uuid.UUID
+	if f.Cursor != "" {
+		raw, err := base64.StdEncoding.DecodeString(f.Cursor)
+		if err == nil {
+			parts := strings.SplitN(string(raw), "|", 2)
+			if len(parts) == 2 {
+				t, err1 := time.Parse(time.RFC3339Nano, parts[0])
+				id, err2 := uuid.Parse(parts[1])
+				if err1 == nil && err2 == nil {
+					cursorTime = &t
+					cursorID = &id
+				}
+			}
+		}
+	}
+
+	rows, err := db.pool.Query(ctx, queryListJobsCursor,
+		statusParam, typeParam, queueParam, f.APIKeyID,
+		cursorTime, cursorID, f.Limit+1,
+	)
+	if err != nil {
+		return CursorPage[*queue.Job]{}, fmt.Errorf("list jobs cursor: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]*queue.Job, 0, f.Limit+1)
+	for rows.Next() {
+		j, err := scanJobFromRows(rows)
+		if err != nil {
+			return CursorPage[*queue.Job]{}, fmt.Errorf("scan job cursor row: %w", err)
+		}
+		jobs = append(jobs, j)
+	}
+	if err := rows.Err(); err != nil {
+		return CursorPage[*queue.Job]{}, fmt.Errorf("iterate job cursor rows: %w", err)
+	}
+
+	hasMore := len(jobs) > f.Limit
+	if hasMore {
+		jobs = jobs[:f.Limit]
+	}
+
+	var nextCursor string
+	if hasMore && len(jobs) > 0 {
+		last := jobs[len(jobs)-1]
+		raw := last.CreatedAt.UTC().Format(time.RFC3339Nano) + "|" + last.ID.String()
+		nextCursor = base64.StdEncoding.EncodeToString([]byte(raw))
+	}
+
+	return CursorPage[*queue.Job]{
+		Items:      jobs,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Limit:      f.Limit,
+	}, nil
 }
 
 // GetJob fetches a single job by UUID. Returns ErrNotFound if it does not exist.
