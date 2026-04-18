@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as jobsApi from '@/api/jobs'
 import type { JobListParams, EnqueueJobRequest } from '@/types'
 import { useUiStore } from '@/store/uiStore'
@@ -7,6 +7,17 @@ export function useJobs(params: JobListParams) {
   return useQuery({
     queryKey: ['jobs', params],
     queryFn: () => jobsApi.listJobs(params),
+    staleTime: 10_000,
+  })
+}
+
+export function useJobsCursor(params: { status?: string; type?: string; queue?: string; limit?: number }) {
+  return useInfiniteQuery({
+    queryKey: ['jobs-cursor', params],
+    queryFn: ({ pageParam = '' }) =>
+      jobsApi.listJobsCursor({ ...params, cursor: pageParam as string }),
+    initialPageParam: '',
+    getNextPageParam: (last) => (last.has_more ? last.next_cursor : undefined),
     staleTime: 10_000,
   })
 }
