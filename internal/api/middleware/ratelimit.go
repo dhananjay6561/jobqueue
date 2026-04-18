@@ -77,18 +77,23 @@ func (rl *RateLimiter) evictLoop() {
 	}
 }
 
-// Middleware returns an http.Handler that enforces per-IP rate limits.
-// Requests that exceed the limit receive a 429 Too Many Requests response.
+// Middleware returns an http.Handler that enforces rate limits.
+// When a DB-backed API key is present in context it limits per key;
+// otherwise it falls back to per-IP limiting.
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			// Fallback: use the full RemoteAddr if it cannot be parsed.
-			ip = r.RemoteAddr
+		bucketKey := ""
+		if key := APIKeyFromContext(r.Context()); key != nil {
+			bucketKey = "key:" + key.ID.String()
+		} else {
+			ip, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				ip = r.RemoteAddr
+			}
+			bucketKey = "ip:" + ip
 		}
 
-		limiter := rl.getLimiter(ip)
-		if !limiter.Allow() {
+		if !rl.getLimiter(bucketKey).Allow() {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, `{"error":"rate limit exceeded","data":null}`, http.StatusTooManyRequests)
 			return
