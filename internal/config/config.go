@@ -104,6 +104,10 @@ func Load() (Config, error) {
 	// --- Server ---
 	cfg.Server.Host = envString("SERVER_HOST", "0.0.0.0")
 	cfg.Server.APIKey = os.Getenv("API_KEY")
+	// Render (and many PaaS) inject PORT; fall back to SERVER_PORT then 8080.
+	if os.Getenv("SERVER_PORT") == "" && os.Getenv("PORT") != "" {
+		os.Setenv("SERVER_PORT", os.Getenv("PORT"))
+	}
 	if cfg.Server.Port, err = envInt("SERVER_PORT", 8080); err != nil {
 		return cfg, fmt.Errorf("SERVER_PORT: %w", err)
 	}

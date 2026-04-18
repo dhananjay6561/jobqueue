@@ -1,0 +1,85 @@
+services:
+  # ── Web service (Go app + React frontend) ────────────────────────────────────
+  - type: web
+    name: jobqueue
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+
+    envVars:
+      # Server
+      - key: SERVER_HOST
+        value: 0.0.0.0
+      - key: SERVER_PORT
+        value: 10000          # Render assigns port 10000 by default
+
+      - key: SERVER_READ_TIMEOUT
+        value: 15s
+      - key: SERVER_WRITE_TIMEOUT
+        value: 30s
+      - key: SERVER_IDLE_TIMEOUT
+        value: 120s
+      - key: RATE_LIMIT_RPS
+        value: 100
+      - key: RATE_LIMIT_BURST
+        value: 20
+
+      # Database — auto-filled from the Postgres instance below
+      - key: DATABASE_DSN
+        fromDatabase:
+          name: jobqueue-db
+          property: connectionString
+      - key: DB_MAX_CONNS
+        value: 5              # free Postgres has a 5-connection limit
+      - key: DB_MIN_CONNS
+        value: 1
+      - key: DB_MAX_CONN_LIFETIME
+        value: 30m
+      - key: DB_MAX_CONN_IDLE_TIME
+        value: 5m
+
+      # Redis — paste your Upstash values here after creating the DB at upstash.com
+      # Format: your-endpoint.upstash.io:6379
+      - key: REDIS_ADDR
+        sync: false           # set manually in Render dashboard
+      - key: REDIS_PASSWORD
+        sync: false           # set manually in Render dashboard
+      - key: REDIS_DB
+        value: 0
+      - key: REDIS_DIAL_TIMEOUT
+        value: 5s
+      - key: REDIS_READ_TIMEOUT
+        value: 3s
+      - key: REDIS_WRITE_TIMEOUT
+        value: 3s
+
+      # Worker pool — keep workers low on free tier (512 MB RAM)
+      - key: WORKER_COUNT
+        value: 2
+      - key: WORKER_HEARTBEAT_INTERVAL
+        value: 10s
+      - key: WORKER_POLL_INTERVAL
+        value: 2s
+      - key: WORKER_SHUTDOWN_TIMEOUT
+        value: 30s
+
+      # Retry
+      - key: RETRY_BASE_DELAY
+        value: 5s
+      - key: RETRY_MAX_DELAY
+        value: 1h
+      - key: RETRY_DEFAULT_MAX_ATTEMPTS
+        value: 5
+
+      # API key auth — optional, set to protect your API
+      # Leave blank for open access
+      - key: API_KEY
+        sync: false
+
+# ── Managed PostgreSQL (free 90-day trial) ────────────────────────────────────
+databases:
+  - name: jobqueue-db
+    plan: free
+    databaseName: jobqueue
+    user: jobqueue
