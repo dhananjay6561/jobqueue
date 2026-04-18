@@ -46,12 +46,22 @@ type Page[T any] struct {
 	Offset     int
 }
 
-// JobStats holds aggregated queue metrics.
+// JobStats holds aggregated queue metrics returned by the stats endpoint and
+// broadcast over WebSocket. Field names use snake_case json tags to match the
+// React frontend's QueueStats interface exactly.
 type JobStats struct {
-	StatusCounts  map[string]int64
-	JobsPerMinute int64
-	DLQCount      int64
-	ActiveWorkers int64
+	TotalJobs     int64   `json:"total_jobs"`
+	Pending       int64   `json:"pending"`
+	Running       int64   `json:"running"`
+	Completed     int64   `json:"completed"`
+	Failed        int64   `json:"failed"`
+	Dead          int64   `json:"dead"`
+	Cancelled     int64   `json:"cancelled"`
+	ActiveWorkers int64   `json:"active_workers"`
+	JobsPerMinute int64   `json:"jobs_per_minute"`
+	FailedRate    float64 `json:"failed_rate"`
+	QueueDepth    int64   `json:"queue_depth"`
+	DLQCount      int64   `json:"dlq_count"`
 }
 
 // JobStorer defines all persistence operations needed by the API and worker pool.
@@ -414,11 +424,9 @@ func (db *DB) ListWorkers(ctx context.Context, activeOnly bool) ([]*queue.Worker
 
 // GetStats returns aggregated queue metrics for the stats endpoint.
 func (db *DB) GetStats(ctx context.Context) (JobStats, error) {
-	stats := JobStats{
-		StatusCounts: make(map[string]int64),
-	}
+	var stats JobStats
 
-	// Count per status.
+	// Count per status — populate flat fields directly.
 	rows, err := db.pool.Query(ctx, queryJobStats)
 	if err != nil {
 		return stats, fmt.Errorf("query job stats: %w", err)
@@ -431,10 +439,29 @@ func (db *DB) GetStats(ctx context.Context) (JobStats, error) {
 		if err := rows.Scan(&status, &count); err != nil {
 			return stats, fmt.Errorf("scan job stat row: %w", err)
 		}
-		stats.StatusCounts[status] = count
+		stats.TotalJobs += count
+		switch status {
+		case "pending":
+			stats.Pending = count
+		case "running":
+			stats.Running = count
+		case "completed":
+			stats.Completed = count
+		case "failed":
+			stats.Failed = count
+		case "dead":
+			stats.Dead = count
+		case "cancelled":
+			stats.Cancelled = count
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return stats, fmt.Errorf("iterate job stat rows: %w", err)
+	}
+
+	stats.QueueDepth = stats.Pending + stats.Running
+	if stats.TotalJobs > 0 {
+		stats.FailedRate = float64(stats.Failed+stats.Dead) / float64(stats.TotalJobs)
 	}
 
 	// Jobs completed in the last minute.
