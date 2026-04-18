@@ -72,6 +72,7 @@ type JobStats struct {
 type JobStorer interface {
 	// Job lifecycle
 	CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error)
+	CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.Job, error)
 	GetJob(ctx context.Context, id uuid.UUID) (*queue.Job, error)
 	ListJobs(ctx context.Context, filter JobFilter) (Page[*queue.Job], error)
 	MarkJobStarted(ctx context.Context, id uuid.UUID, workerID string) (*queue.Job, error)
@@ -145,6 +146,53 @@ func (db *DB) CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error)
 		return nil, fmt.Errorf("create job: %w", err)
 	}
 	return result, nil
+}
+
+// CreateJobBatch inserts multiple jobs in a single transaction and returns them.
+func (db *DB) CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.Job, error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin batch transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	ids := make([]uuid.UUID, 0, len(jobs))
+	for _, job := range jobs {
+		_, err := tx.Exec(ctx, queryInsertJob,
+			job.ID,
+			job.Type,
+			job.Payload,
+			job.Priority,
+			job.MaxAttempts,
+			job.QueueName,
+			job.ScheduledAt,
+			job.APIKeyID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("insert job %s in batch: %w", job.ID, err)
+		}
+		ids = append(ids, job.ID)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit batch transaction: %w", err)
+	}
+
+	rows, err := db.pool.Query(ctx, queryGetJobsByIDs, ids)
+	if err != nil {
+		return nil, fmt.Errorf("fetch batch jobs: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*queue.Job, 0, len(jobs))
+	for rows.Next() {
+		j, err := scanJobFromRows(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan batch job row: %w", err)
+		}
+		result = append(result, j)
+	}
+	return result, rows.Err()
 }
 
 // GetJob fetches a single job by UUID. Returns ErrNotFound if it does not exist.
