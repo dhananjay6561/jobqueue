@@ -96,6 +96,10 @@ type JobStorer interface {
 	MarkWorkerStopped(ctx context.Context, workerID string) error
 	ListWorkers(ctx context.Context, activeOnly bool) ([]*queue.WorkerInfo, error)
 
+	// Cleanup
+	PurgeExpiredJobs(ctx context.Context) (int64, error)
+	PurgeJobsBefore(ctx context.Context, before time.Time, apiKeyID *uuid.UUID) (int64, error)
+
 	// Statistics
 	GetStats(ctx context.Context) (JobStats, error)
 
@@ -140,6 +144,7 @@ func (db *DB) CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error)
 		job.QueueName,
 		job.ScheduledAt,
 		job.APIKeyID,
+		job.ExpiresAt,
 	)
 
 	result, err := scanJob(row)
@@ -168,6 +173,7 @@ func (db *DB) CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.J
 			job.QueueName,
 			job.ScheduledAt,
 			job.APIKeyID,
+			job.ExpiresAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("insert job %s in batch: %w", job.ID, err)
@@ -369,6 +375,7 @@ func (db *DB) InsertDLQ(ctx context.Context, job *queue.Job) error {
 		job.ErrorMessage,
 		job.Attempts,
 		job.APIKeyID,
+		job.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("insert DLQ entry %s: %w", job.ID, err)
@@ -439,6 +446,34 @@ func (db *DB) MarkDLQRequeued(ctx context.Context, dlqID, newJobID uuid.UUID) er
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ─── Cleanup ──────────────────────────────────────────────────────────────────
+
+// PurgeExpiredJobs deletes terminal jobs and DLQ entries whose expires_at has passed.
+// Returns the total number of rows deleted.
+func (db *DB) PurgeExpiredJobs(ctx context.Context) (int64, error) {
+	tag, err := db.pool.Exec(ctx, queryPurgeExpiredJobs)
+	if err != nil {
+		return 0, fmt.Errorf("purge expired jobs: %w", err)
+	}
+	n := tag.RowsAffected()
+
+	tag2, err := db.pool.Exec(ctx, queryPurgeExpiredDLQ)
+	if err != nil {
+		return n, fmt.Errorf("purge expired DLQ: %w", err)
+	}
+	return n + tag2.RowsAffected(), nil
+}
+
+// PurgeJobsBefore bulk-deletes terminal jobs created before the given time.
+// Scoped to the API key when apiKeyID is non-nil.
+func (db *DB) PurgeJobsBefore(ctx context.Context, before time.Time, apiKeyID *uuid.UUID) (int64, error) {
+	tag, err := db.pool.Exec(ctx, queryPurgeJobsBefore, before, apiKeyID)
+	if err != nil {
+		return 0, fmt.Errorf("purge jobs before %s: %w", before, err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 // ─── Worker registry ──────────────────────────────────────────────────────────
@@ -600,6 +635,7 @@ func scanJob(row pgxScanner) (*queue.Job, error) {
 		&job.ErrorMessage,
 		&job.Result,
 		&job.APIKeyID,
+		&job.ExpiresAt,
 	)
 	if err != nil {
 		return nil, err
@@ -630,6 +666,7 @@ func scanDLQEntry(row pgxScanner) (*queue.DLQEntry, error) {
 		&entry.RequeuedAt,
 		&entry.NewJobID,
 		&entry.APIKeyID,
+		&entry.ExpiresAt,
 	)
 	if err != nil {
 		return nil, err

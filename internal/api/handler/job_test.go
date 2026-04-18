@@ -241,6 +241,10 @@ func (m *mockJobStore) IncrementAPIKeyUsage(_ context.Context, _ string) (*queue
 	return &queue.APIKey{}, nil
 }
 func (m *mockJobStore) DeleteAPIKey(_ context.Context, _ uuid.UUID) error { return nil }
+func (m *mockJobStore) PurgeExpiredJobs(_ context.Context) (int64, error) { return 0, nil }
+func (m *mockJobStore) PurgeJobsBefore(_ context.Context, _ time.Time, _ *uuid.UUID) (int64, error) {
+	return 0, nil
+}
 
 // mockBroker records enqueue/remove calls for assertion.
 type mockBroker struct {
