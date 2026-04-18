@@ -296,6 +296,16 @@ const (
 	queryDeleteCron = `
 		DELETE FROM cron_schedules WHERE id = $1`
 
+	// queryGetJobsByIDs fetches multiple jobs by their UUIDs (used after batch insert).
+	queryGetJobsByIDs = `
+		SELECT
+			id, type, payload, priority, status, attempts, max_attempts,
+			queue_name, scheduled_at, created_at, started_at, completed_at,
+			worker_id, error_message, result, api_key_id
+		FROM jobs
+		WHERE id = ANY($1)
+		ORDER BY created_at ASC`
+
 	// --- API keys ---
 
 	queryInsertAPIKey = `
