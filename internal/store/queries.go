@@ -69,6 +69,7 @@ const (
 			worker_id  = $1,
 			attempts   = attempts + 1
 		WHERE id = $2
+		  AND status = 'pending'
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
