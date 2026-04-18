@@ -204,6 +204,219 @@ Enqueue a job with `Max Attempts: 1` and then immediately go to **Jobs** and cli
 
 ---
 
+---
+
+## Advanced Features
+
+### API Key Authentication
+
+Protect all `/api/v1/*` routes by setting the `API_KEY` environment variable. Once set, every API request must include the key.
+
+```bash
+# Set in .env or docker-compose environment
+API_KEY=my-super-secret-key
+
+# Include in every request
+curl -H "X-API-Key: my-super-secret-key" http://localhost:8080/api/v1/stats
+
+# Or as a query param
+curl "http://localhost:8080/api/v1/jobs?api_key=my-super-secret-key"
+```
+
+Leave `API_KEY` empty (the default) for open access in dev/demo mode. The dashboard, `/health`, and `/metrics` are always public.
+
+---
+
+### Job Result Storage
+
+Handlers can return a result alongside the nil error. The result is stored as JSON in PostgreSQL and retrievable by callers — enabling async request/response patterns.
+
+```bash
+# Enqueue a job
+curl -X POST http://localhost:8080/api/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"generate_report","payload":{"report_id":42},"priority":5}'
+
+# Poll until completed, then fetch the result
+curl http://localhost:8080/api/v1/jobs/<job-id>/result
+# → {"job_id":"...","status":"ok","job_type":"generate_report","processed":true}
+```
+
+Returns `204 No Content` if the job exists but stored no result. Returns `404` if the job doesn't exist.
+
+**In your own handler** (when using the server directly):
+```go
+workerPool.Register("generate_report", func(ctx context.Context, job *queue.Job) (any, error) {
+    report := buildReport(job.Payload)
+    return map[string]any{"report_url": report.URL, "rows": report.RowCount}, nil
+})
+```
+
+---
+
+### Webhooks
+
+Register HTTP endpoints to receive real-time POSTs whenever job events fire. Each delivery is signed with HMAC-SHA256 so you can verify it came from your server.
+
+```bash
+# Register a webhook
+curl -X POST http://localhost:8080/api/v1/webhooks \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "url": "https://myapp.com/hooks/jobqueue",
+    "secret": "my-signing-secret",
+    "events": ["job.completed", "job.failed", "job.dead"]
+  }'
+
+# List all webhooks
+curl http://localhost:8080/api/v1/webhooks
+
+# Delete a webhook
+curl -X DELETE http://localhost:8080/api/v1/webhooks/<webhook-id>
+```
+
+**Payload your endpoint receives:**
+```json
+{
+  "event": "job.completed",
+  "job_id": "abc123",
+  "job_type": "send_email",
+  "timestamp": 1713419400000
+}
+```
+
+**Verifying the signature** (Node.js example):
+```js
+const crypto = require('crypto');
+const sig = crypto.createHmac('sha256', 'my-signing-secret')
+  .update(rawBody).digest('hex');
+if (`sha256=${sig}` !== req.headers['x-webhook-signature']) {
+  return res.status(401).send('invalid signature');
+}
+```
+
+Supported events: `job.enqueued`, `job.started`, `job.completed`, `job.failed`, `job.dead`.
+
+---
+
+### Prometheus Metrics
+
+`GET /metrics` returns Prometheus text format — plug it straight into any Prometheus scrape config.
+
+```bash
+curl http://localhost:8080/metrics | grep "^jobqueue_"
+# jobqueue_jobs_enqueued_total 42
+# jobqueue_jobs_completed_total 38
+# jobqueue_jobs_failed_total 3
+# jobqueue_jobs_dead_total 1
+# jobqueue_queue_depth 4
+# jobqueue_active_workers 5
+# jobqueue_ws_clients 2
+# jobqueue_job_duration_seconds_bucket{job_type="send_email",le="0.5"} 12
+```
+
+**Prometheus scrape config:**
+```yaml
+scrape_configs:
+  - job_name: jobqueue
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: /metrics
+```
+
+**Grafana dashboard** — import any Go job queue dashboard template and map to these metric names.
+
+---
+
+### Go SDK
+
+Import the SDK in any Go service to enqueue jobs and interact with the API without writing raw HTTP.
+
+```bash
+go get github.com/dhananjay6561/jobqueue-go
+```
+
+```go
+import jobqueue "github.com/dhananjay6561/jobqueue-go"
+
+client := jobqueue.New("http://localhost:8080",
+    jobqueue.WithAPIKey("my-secret-key"),
+)
+
+// Enqueue
+job, err := client.Enqueue(ctx, jobqueue.EnqueueRequest{
+    Type:    "send_email",
+    Payload: map[string]any{"to": "user@example.com"},
+    Priority: 8,
+})
+
+// Poll for result
+for job.Status != "completed" && job.Status != "dead" {
+    time.Sleep(500 * time.Millisecond)
+    job, _ = client.GetJob(ctx, job.ID)
+}
+result, _ := client.GetJobResult(ctx, job.ID)
+
+// Stats, webhooks, DLQ, cron — full API coverage
+stats, _ := client.GetStats(ctx)
+```
+
+See `sdk/go/README.md` for the full reference.
+
+---
+
+### Cron Scheduling
+
+Register recurring job schedules using standard 5-field cron expressions. The server auto-enqueues a fresh job each time the schedule fires — no external cron daemon needed.
+
+```bash
+# Schedule cleanup_storage every day at 2 AM
+curl -X POST http://localhost:8080/api/v1/cron \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "daily-cleanup",
+    "job_type": "cleanup_storage",
+    "payload": {"target": "tmp"},
+    "queue_name": "bulk",
+    "priority": 3,
+    "max_attempts": 2,
+    "cron_expression": "0 2 * * *"
+  }'
+
+# Every 15 minutes
+curl -X POST http://localhost:8080/api/v1/cron \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "sync-every-15min",
+    "job_type": "sync_data",
+    "payload": {},
+    "cron_expression": "*/15 * * * *"
+  }'
+
+# List all schedules (includes next_run_at)
+curl http://localhost:8080/api/v1/cron
+
+# Delete a schedule
+curl -X DELETE http://localhost:8080/api/v1/cron/<schedule-id>
+```
+
+**Cron expression reference:**
+
+| Expression | Meaning |
+|---|---|
+| `* * * * *` | Every minute |
+| `0 * * * *` | Every hour at :00 |
+| `0 9 * * *` | Daily at 09:00 |
+| `0 9 * * 1` | Every Monday at 09:00 |
+| `*/15 * * * *` | Every 15 minutes |
+| `0 2 1 * *` | 1st of every month at 02:00 |
+
+Fields: `minute hour day-of-month month day-of-week`. Supports `*`, `*/step`, `a-b` ranges, and `a,b,c` lists.
+
+The promoter checks for due schedules every 30 seconds. After each dispatch, `last_run_at` and `next_run_at` are updated so you always know when a job last ran and when it runs next.
+
+---
+
 ## Why this matters
 
 This is the same pattern used by:
