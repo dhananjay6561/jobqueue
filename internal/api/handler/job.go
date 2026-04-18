@@ -171,6 +171,11 @@ func (h *JobHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !jobBelongsToKey(r, job) {
+		writeError(w, r, http.StatusNotFound, "job not found")
+		return
+	}
+
 	writeJSON(w, r, http.StatusOK, job)
 }
 
@@ -181,6 +186,20 @@ func (h *JobHandler) GetJobResult(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	job, err := h.store.GetJob(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "job not found")
+		return
+	}
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to get job: "+err.Error())
+		return
+	}
+	if !jobBelongsToKey(r, job) {
+		writeError(w, r, http.StatusNotFound, "job not found")
 		return
 	}
 
@@ -224,6 +243,11 @@ func (h *JobHandler) CancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !jobBelongsToKey(r, job) {
+		writeError(w, r, http.StatusNotFound, "job not found")
+		return
+	}
+
 	if job.Status != queue.StatusPending {
 		writeError(w, r, http.StatusConflict, "only pending jobs can be cancelled")
 		return
@@ -249,6 +273,20 @@ func (h *JobHandler) RetryJob(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(r, "id")
 	if err != nil {
 		writeError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	existing, err := h.store.GetJob(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "job not found")
+		return
+	}
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to get job: "+err.Error())
+		return
+	}
+	if !jobBelongsToKey(r, existing) {
+		writeError(w, r, http.StatusNotFound, "job not found")
 		return
 	}
 
@@ -395,4 +433,17 @@ func parseUUID(r *http.Request, param string) (uuid.UUID, error) {
 		return uuid.UUID{}, errors.New("invalid UUID: " + raw)
 	}
 	return id, nil
+}
+
+// jobBelongsToKey returns false when a DB-backed API key is present in context
+// but the job was created by a different key. Open/static auth always returns true.
+func jobBelongsToKey(r *http.Request, job *queue.Job) bool {
+	key := middleware.APIKeyFromContext(r.Context())
+	if key == nil {
+		return true // open or static auth — no scoping
+	}
+	if job.APIKeyID == nil {
+		return true // job predates key scoping
+	}
+	return *job.APIKeyID == key.ID
 }
