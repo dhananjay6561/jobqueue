@@ -9,24 +9,26 @@ package store
 
 const (
 	// queryInsertJob inserts a new job row and returns its persisted state.
+	// Parameters: $1=id, $2=type, $3=payload, $4=priority, $5=max_attempts,
+	//             $6=queue_name, $7=scheduled_at, $8=api_key_id (nullable UUID).
 	queryInsertJob = `
 		INSERT INTO jobs (
 			id, type, payload, priority, status, attempts, max_attempts,
-			queue_name, scheduled_at, created_at
+			queue_name, scheduled_at, created_at, api_key_id
 		) VALUES (
-			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW()
+			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW(), $8
 		)
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result`
+			worker_id, error_message, result, api_key_id`
 
 	// queryGetJobByID fetches a single job by its UUID primary key.
 	queryGetJobByID = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result
+			worker_id, error_message, result, api_key_id
 		FROM jobs
 		WHERE id = $1`
 
@@ -34,22 +36,23 @@ const (
 	queryGetJobResult = `
 		SELECT result FROM jobs WHERE id = $1`
 
-	// queryListJobs fetches a page of jobs with optional status, type, and
-	// queue_name filters. Results are ordered by created_at DESC.
+	// queryListJobs fetches a page of jobs with optional status, type,
+	// queue_name, and api_key_id filters. Results are ordered by created_at DESC.
 	// Parameters: $1=status (nullable), $2=type (nullable), $3=queue (nullable),
-	//             $4=limit, $5=offset.
+	//             $4=api_key_id (nullable UUID), $5=limit, $6=offset.
 	queryListJobs = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result
+			worker_id, error_message, result, api_key_id
 		FROM jobs
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
 			AND ($2::text IS NULL OR type = $2)
 			AND ($3::text IS NULL OR queue_name = $3)
+			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)
 		ORDER BY created_at DESC
-		LIMIT $4 OFFSET $5`
+		LIMIT $5 OFFSET $6`
 
 	// queryCountJobs returns the total count matching the same filters as
 	// queryListJobs. Used to compute pagination metadata.
@@ -59,7 +62,8 @@ const (
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
 			AND ($2::text IS NULL OR type = $2)
-			AND ($3::text IS NULL OR queue_name = $3)`
+			AND ($3::text IS NULL OR queue_name = $3)
+			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)`
 
 	// queryUpdateJobStatus transitions a job to a new status and records
 	// started_at / completed_at / error_message as appropriate.
@@ -77,7 +81,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result`
+			worker_id, error_message, result, api_key_id`
 
 	// queryMarkJobCompleted transitions a running job to completed and stores result.
 	queryMarkJobCompleted = `
@@ -90,7 +94,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result`
+			worker_id, error_message, result, api_key_id`
 
 	// queryMarkJobFailed transitions a running job to failed and records the error.
 	queryMarkJobFailed = `
@@ -103,7 +107,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result`
+			worker_id, error_message, result, api_key_id`
 
 	// queryMarkJobDead transitions a failed job to dead (moves to DLQ table).
 	queryMarkJobDead = `
@@ -136,33 +140,39 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result`
+			worker_id, error_message, result, api_key_id`
 
 	// --- Dead-Letter Queue ---
 
 	// queryInsertDLQ records a dead job in the dead_letter_jobs table.
+	// Parameters: $1...$9 as before, $10=api_key_id (nullable UUID).
 	queryInsertDLQ = `
 		INSERT INTO dead_letter_jobs (
 			id, type, payload, priority, queue_name, max_attempts,
-			original_created_at, last_error, total_attempts
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			original_created_at, last_error, total_attempts, api_key_id
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (id) DO NOTHING`
 
 	// queryListDLQ fetches DLQ entries ordered by most recently dead.
-	// Parameters: $1=include_requeued (bool), $2=limit, $3=offset.
+	// Parameters: $1=include_requeued (bool), $2=api_key_id (nullable UUID),
+	//             $3=limit, $4=offset.
 	queryListDLQ = `
 		SELECT
 			id, type, payload, priority, queue_name, max_attempts,
 			died_at, original_created_at, last_error, total_attempts,
-			requeued, requeued_at, new_job_id
+			requeued, requeued_at, new_job_id, api_key_id
 		FROM dead_letter_jobs
 		WHERE ($1 = TRUE OR requeued = FALSE)
+		  AND ($2::uuid IS NULL OR api_key_id = $2::uuid)
 		ORDER BY died_at DESC
-		LIMIT $2 OFFSET $3`
+		LIMIT $3 OFFSET $4`
 
 	// queryCountDLQ counts DLQ entries for pagination.
+	// Parameters: $1=include_requeued (bool), $2=api_key_id (nullable UUID).
 	queryCountDLQ = `
-		SELECT COUNT(*) FROM dead_letter_jobs WHERE ($1 = TRUE OR requeued = FALSE)`
+		SELECT COUNT(*) FROM dead_letter_jobs
+		WHERE ($1 = TRUE OR requeued = FALSE)
+		  AND ($2::uuid IS NULL OR api_key_id = $2::uuid)`
 
 	// queryMarkDLQRequeued marks a DLQ entry as requeued when a new job is created.
 	queryMarkDLQRequeued = `
@@ -175,7 +185,7 @@ const (
 		SELECT
 			id, type, payload, priority, queue_name, max_attempts,
 			died_at, original_created_at, last_error, total_attempts,
-			requeued, requeued_at, new_job_id
+			requeued, requeued_at, new_job_id, api_key_id
 		FROM dead_letter_jobs
 		WHERE id = $1`
 
