@@ -55,6 +55,19 @@ func (m *mockJobStore) CreateJob(_ context.Context, job *queue.Job) (*queue.Job,
 	return job, nil
 }
 
+func (m *mockJobStore) CreateJobBatch(_ context.Context, jobs []*queue.Job) ([]*queue.Job, error) {
+	if m.createErr != nil {
+		return nil, m.createErr
+	}
+	now := time.Now()
+	for _, job := range jobs {
+		job.CreatedAt = now
+		job.Status = queue.StatusPending
+		m.jobs[job.ID] = job
+	}
+	return jobs, nil
+}
+
 func (m *mockJobStore) GetJob(_ context.Context, id uuid.UUID) (*queue.Job, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
@@ -210,6 +223,9 @@ func (m *mockJobStore) ListDueCronSchedules(_ context.Context, _ time.Time) ([]*
 }
 func (m *mockJobStore) UpdateCronRun(_ context.Context, _ uuid.UUID, _, _ time.Time) error {
 	return nil
+}
+func (m *mockJobStore) PatchCronSchedule(_ context.Context, _ uuid.UUID, _ *bool, _ *string, _ []byte, _ *time.Time) (*queue.CronSchedule, error) {
+	return &queue.CronSchedule{}, nil
 }
 func (m *mockJobStore) DeleteCronSchedule(_ context.Context, _ uuid.UUID) error { return nil }
 func (m *mockJobStore) CreateAPIKey(_ context.Context, name string, tier queue.APIKeyTier) (*queue.APIKey, string, error) {
