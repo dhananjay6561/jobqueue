@@ -256,4 +256,33 @@ const (
 
 	queryDeleteWebhook = `
 		DELETE FROM webhooks WHERE id = $1`
+
+	// --- Cron schedules ---
+
+	queryInsertCron = `
+		INSERT INTO cron_schedules
+			(name, job_type, payload, queue_name, priority, max_attempts, cron_expression, enabled, next_run_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id, name, job_type, payload, queue_name, priority, max_attempts,
+		          cron_expression, enabled, last_run_at, next_run_at, created_at`
+
+	queryListCron = `
+		SELECT id, name, job_type, payload, queue_name, priority, max_attempts,
+		       cron_expression, enabled, last_run_at, next_run_at, created_at
+		FROM cron_schedules ORDER BY created_at DESC`
+
+	queryListDueCron = `
+		SELECT id, name, job_type, payload, queue_name, priority, max_attempts,
+		       cron_expression, enabled, last_run_at, next_run_at, created_at
+		FROM cron_schedules
+		WHERE enabled = TRUE AND next_run_at <= $1
+		ORDER BY next_run_at ASC`
+
+	queryUpdateCronRun = `
+		UPDATE cron_schedules
+		SET last_run_at = $1, next_run_at = $2
+		WHERE id = $3`
+
+	queryDeleteCron = `
+		DELETE FROM cron_schedules WHERE id = $1`
 )

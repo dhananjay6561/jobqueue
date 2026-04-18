@@ -102,6 +102,13 @@ type JobStorer interface {
 	ListEnabledWebhooks(ctx context.Context) ([]*queue.Webhook, error)
 	DeleteWebhook(ctx context.Context, id uuid.UUID) error
 
+	// Cron schedules
+	CreateCronSchedule(ctx context.Context, s *queue.CronSchedule) (*queue.CronSchedule, error)
+	ListCronSchedules(ctx context.Context) ([]*queue.CronSchedule, error)
+	ListDueCronSchedules(ctx context.Context, now time.Time) ([]*queue.CronSchedule, error)
+	UpdateCronRun(ctx context.Context, id uuid.UUID, lastRun, nextRun time.Time) error
+	DeleteCronSchedule(ctx context.Context, id uuid.UUID) error
+
 	// Infrastructure
 	Ping(ctx context.Context) error
 }

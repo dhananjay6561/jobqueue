@@ -199,6 +199,19 @@ func (m *mockJobStore) ListEnabledWebhooks(_ context.Context) ([]*queue.Webhook,
 	return []*queue.Webhook{}, nil
 }
 func (m *mockJobStore) DeleteWebhook(_ context.Context, _ uuid.UUID) error { return nil }
+func (m *mockJobStore) CreateCronSchedule(_ context.Context, s *queue.CronSchedule) (*queue.CronSchedule, error) {
+	return s, nil
+}
+func (m *mockJobStore) ListCronSchedules(_ context.Context) ([]*queue.CronSchedule, error) {
+	return []*queue.CronSchedule{}, nil
+}
+func (m *mockJobStore) ListDueCronSchedules(_ context.Context, _ time.Time) ([]*queue.CronSchedule, error) {
+	return []*queue.CronSchedule{}, nil
+}
+func (m *mockJobStore) UpdateCronRun(_ context.Context, _ uuid.UUID, _, _ time.Time) error {
+	return nil
+}
+func (m *mockJobStore) DeleteCronSchedule(_ context.Context, _ uuid.UUID) error { return nil }
 
 // mockBroker records enqueue/remove calls for assertion.
 type mockBroker struct {

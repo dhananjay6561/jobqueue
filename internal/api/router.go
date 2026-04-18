@@ -58,6 +58,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	workerHandler := handler.NewWorkerHandler(cfg.Store)
 	wsHandler := handler.NewWSHandler(cfg.Hub)
 	webhookHandler := handler.NewWebhookHandler(cfg.Store)
+	cronHandler := handler.NewCronHandler(cfg.Store)
 
 	// ── Routes ────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/webhooks", webhookHandler.ListWebhooks)
 		r.Post("/webhooks", webhookHandler.CreateWebhook)
 		r.Delete("/webhooks/{id}", webhookHandler.DeleteWebhook)
+
+		// Cron schedules
+		r.Get("/cron", cronHandler.ListCronSchedules)
+		r.Post("/cron", cronHandler.CreateCronSchedule)
+		r.Delete("/cron/{id}", cronHandler.DeleteCronSchedule)
 	})
 
 	// Serve the React SPA if a static dir is configured.

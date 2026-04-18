@@ -95,6 +95,15 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
+	// ── Cron promoter ─────────────────────────────────────────────────────────
+	cronPromoter := queue.NewCronPromoter(dbStore, broker, 30*time.Second)
+	cronCtx, cronCancel := context.WithCancel(ctx)
+	cronDone := make(chan struct{})
+	go func() {
+		defer close(cronDone)
+		cronPromoter.Run(cronCtx)
+	}()
+
 	// ── Webhook dispatcher ─────────────────────────────────────────────────────
 	webhookDispatcher := queue.NewWebhookDispatcher(dbStore)
 	// fanout publishes to both WebSocket hub and webhook dispatcher.
@@ -202,7 +211,11 @@ func main() {
 	statsCancel()
 	<-statsDone
 
-	// 3. Stop the worker pool (waits for in-flight jobs to finish).
+	// 3. Stop the cron promoter.
+	cronCancel()
+	<-cronDone
+
+	// 4. Stop the worker pool (waits for in-flight jobs to finish).
 	log.Info().Msg("stopping worker pool")
 	workerPool.Shutdown()
 
