@@ -165,12 +165,12 @@ func healthHandler(jobStore store.JobStorer, broker queue.Broker) http.HandlerFu
 
 // metricsResponse is the JSON payload returned by GET /metrics.
 type metricsResponse struct {
-	QueueDepth       int64            `json:"queue_depth"`
-	ActiveWorkers    int              `json:"active_workers"`
-	WSClients        int              `json:"ws_clients"`
-	StatusCounts     map[string]int64 `json:"status_counts"`
-	JobsPerMinute    int64            `json:"jobs_per_minute"`
-	DLQCount         int64            `json:"dlq_count"`
+	QueueDepth    int64   `json:"queue_depth"`
+	ActiveWorkers int     `json:"active_workers"`
+	WSClients     int     `json:"ws_clients"`
+	JobsPerMinute int64   `json:"jobs_per_minute"`
+	DLQCount      int64   `json:"dlq_count"`
+	FailedRate    float64 `json:"failed_rate"`
 }
 
 // metricsHandler returns a lightweight metrics snapshot without external
@@ -193,11 +193,12 @@ func metricsHandler(jobStore store.JobStorer, hub *ws.Hub) http.HandlerFunc {
 		}
 
 		resp := metricsResponse{
+			QueueDepth:    stats.QueueDepth,
 			ActiveWorkers: len(workers),
 			WSClients:     hub.ClientCount(),
-			StatusCounts:  stats.StatusCounts,
 			JobsPerMinute: stats.JobsPerMinute,
 			DLQCount:      stats.DLQCount,
+			FailedRate:    stats.FailedRate,
 		}
 
 		w.Header().Set("Content-Type", "application/json")
