@@ -95,6 +95,9 @@ type Job struct {
 	// APIKeyID is the UUID of the API key that created this job.
 	// Nil for jobs created without a DB-backed API key (open/static auth).
 	APIKeyID *uuid.UUID `json:"api_key_id,omitempty"`
+
+	// ExpiresAt is when the job should be auto-purged. Nil = never expires.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // DLQEntry represents a job that has been permanently failed and moved to the
@@ -132,6 +135,9 @@ type DLQEntry struct {
 
 	// APIKeyID is the UUID of the API key that originally created this job.
 	APIKeyID *uuid.UUID `json:"api_key_id,omitempty"`
+
+	// ExpiresAt is when the DLQ entry should be auto-purged. Nil = never expires.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // WorkerInfo is a snapshot of a worker's state at a point in time.
@@ -177,4 +183,8 @@ type EnqueueRequest struct {
 
 	// ScheduledAt defaults to now when omitted.
 	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+
+	// TTLSeconds sets how long (in seconds) the job is kept after reaching a
+	// terminal state. Zero means no expiry.
+	TTLSeconds int `json:"ttl_seconds,omitempty"`
 }
