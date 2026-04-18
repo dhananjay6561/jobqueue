@@ -7,6 +7,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/jobs': 'Jobs',
   '/workers': 'Workers',
   '/dlq': 'Dead Letter Queue',
+  '/cron': 'Cron Schedules',
 }
 
 export function TopBar() {

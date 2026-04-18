@@ -5,6 +5,7 @@ import { Dashboard } from '@/pages/Dashboard'
 import { Jobs } from '@/pages/Jobs'
 import { Workers } from '@/pages/Workers'
 import { DeadLetterQueue } from '@/pages/DeadLetterQueue'
+import CronPage from '@/pages/Cron'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,6 +27,7 @@ export function App() {
             <Route path="jobs" element={<Jobs />} />
             <Route path="workers" element={<Workers />} />
             <Route path="dlq" element={<DeadLetterQueue />} />
+            <Route path="cron" element={<CronPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
