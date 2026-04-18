@@ -98,6 +98,10 @@ type Job struct {
 
 	// ExpiresAt is when the job should be auto-purged. Nil = never expires.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+
+	// Tags is arbitrary key-value metadata attached at enqueue time.
+	// Useful for filtering, tracing, or per-user/per-tenant attribution.
+	Tags map[string]string `json:"tags,omitempty"`
 }
 
 // DLQEntry represents a job that has been permanently failed and moved to the
@@ -187,4 +191,7 @@ type EnqueueRequest struct {
 	// TTLSeconds sets how long (in seconds) the job is kept after reaching a
 	// terminal state. Zero means no expiry.
 	TTLSeconds int `json:"ttl_seconds,omitempty"`
+
+	// Tags is arbitrary key-value metadata forwarded to the stored job.
+	Tags map[string]string `json:"tags,omitempty"`
 }
