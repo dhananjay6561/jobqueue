@@ -113,17 +113,27 @@ func main() {
 		Queues:    []string{queue.DefaultQueueName, "critical", "bulk"},
 	})
 
-	// Register example job handlers. Real applications would register these
-	// from a separate handlers package.
-	workerPool.Register("noop", func(_ context.Context, _ *queue.Job) error {
-		// No-op handler used for testing the pipeline end-to-end.
-		return nil
-	})
-
-	workerPool.Register("send_notification", func(_ context.Context, _ *queue.Job) error {
-		// Example notification handler for demo/testing flows.
-		return nil
-	})
+	// Register handlers for all job types exposed in the dashboard.
+	// These simulate realistic work with a short sleep so the "running" state
+	// is visible in the UI before the job completes.
+	simulatedHandlers := []string{
+		"noop",
+		"send_email",
+		"send_notification",
+		"generate_report",
+		"resize_image",
+		"sync_data",
+		"process_payment",
+		"export_csv",
+		"cleanup_storage",
+	}
+	for _, jobType := range simulatedHandlers {
+		jt := jobType
+		workerPool.Register(jt, func(_ context.Context, _ *queue.Job) error {
+			time.Sleep(500 * time.Millisecond)
+			return nil
+		})
+	}
 
 	workerPool.Start(ctx)
 	log.Info().Int("count", cfg.Worker.Count).Msg("worker pool started")
