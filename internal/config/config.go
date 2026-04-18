@@ -36,6 +36,10 @@ type ServerConfig struct {
 	RateLimit int
 	// RateBurst is the burst size for the token bucket rate limiter.
 	RateBurst int
+	// APIKey is the shared secret for API authentication. When non-empty,
+	// all /api/v1/* requests must include it as X-API-Key header or
+	// ?api_key= query param. If empty, authentication is disabled.
+	APIKey string
 }
 
 // DatabaseConfig holds PostgreSQL connection parameters.
@@ -99,6 +103,7 @@ func Load() (Config, error) {
 
 	// --- Server ---
 	cfg.Server.Host = envString("SERVER_HOST", "0.0.0.0")
+	cfg.Server.APIKey = os.Getenv("API_KEY")
 	if cfg.Server.Port, err = envInt("SERVER_PORT", 8080); err != nil {
 		return cfg, fmt.Errorf("SERVER_PORT: %w", err)
 	}

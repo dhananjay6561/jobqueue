@@ -148,6 +148,7 @@ func main() {
 		RateLimitRPS:       cfg.Server.RateLimit,
 		RateLimitBurst:     cfg.Server.RateBurst,
 		StaticDir:          "/frontend/dist",
+		APIKey:             cfg.Server.APIKey,
 	})
 
 	httpServer := &http.Server{

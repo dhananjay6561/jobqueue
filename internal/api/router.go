@@ -30,6 +30,7 @@ type RouterConfig struct {
 	RateLimitRPS       int
 	RateLimitBurst     int
 	StaticDir          string // path to built frontend; empty = no UI served
+	APIKey             string // when non-empty, /api/v1/* requires X-API-Key
 }
 
 // NewRouter constructs and returns the application's HTTP router.
@@ -67,8 +68,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// WebSocket upgrade endpoint.
 	r.Get("/ws", wsHandler.ServeWS)
 
-	// Versioned REST API.
+	// Versioned REST API — optionally gated by API key.
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey))
 		// Jobs
 		r.Post("/jobs", jobHandler.EnqueueJob)
 		r.Get("/jobs", jobHandler.ListJobs)
