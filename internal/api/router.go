@@ -78,6 +78,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs", jobHandler.EnqueueJob)
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs/batch", jobHandler.EnqueueJobBatch)
 		r.Get("/jobs", jobHandler.ListJobs)
+		r.Delete("/jobs", jobHandler.PurgeJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
 		r.Get("/jobs/{id}/result", jobHandler.GetJobResult)
 		r.Delete("/jobs/{id}", jobHandler.CancelJob)

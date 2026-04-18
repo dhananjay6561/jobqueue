@@ -93,6 +93,10 @@ func (h *JobHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 		QueueName:   req.QueueName,
 		ScheduledAt: scheduledAt,
 	}
+	if req.TTLSeconds > 0 {
+		exp := time.Now().Add(time.Duration(req.TTLSeconds) * time.Second)
+		job.ExpiresAt = &exp
+	}
 	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
 		job.APIKeyID = &key.ID
 	}
@@ -177,6 +181,10 @@ func (h *JobHandler) EnqueueJobBatch(w http.ResponseWriter, r *http.Request) {
 			MaxAttempts: req.MaxAttempts,
 			QueueName:   req.QueueName,
 			ScheduledAt: scheduledAt,
+		}
+		if req.TTLSeconds > 0 {
+			exp := now.Add(time.Duration(req.TTLSeconds) * time.Second)
+			job.ExpiresAt = &exp
 		}
 		if key != nil {
 			job.APIKeyID = &key.ID
@@ -501,6 +509,36 @@ func (h *JobHandler) RequeueDLQJob(w http.ResponseWriter, r *http.Request) {
 		"new_job":    createdJob,
 		"dlq_entry_id": id,
 	})
+}
+
+// PurgeJobs handles DELETE /api/v1/jobs.
+// Bulk-deletes terminal jobs (completed/failed/dead/cancelled) created before
+// the given timestamp. Query param: before=<RFC3339> (required).
+// Scoped to the calling API key when auth is DB-backed.
+func (h *JobHandler) PurgeJobs(w http.ResponseWriter, r *http.Request) {
+	beforeStr := r.URL.Query().Get("before")
+	if beforeStr == "" {
+		writeError(w, r, http.StatusBadRequest, "query param 'before' is required (RFC3339)")
+		return
+	}
+	before, err := time.Parse(time.RFC3339, beforeStr)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid 'before' timestamp: "+err.Error())
+		return
+	}
+
+	var apiKeyID *uuid.UUID
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		apiKeyID = &key.ID
+	}
+
+	n, err := h.store.PurgeJobsBefore(r.Context(), before, apiKeyID)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "purge failed: "+err.Error())
+		return
+	}
+
+	writeJSON(w, r, http.StatusOK, map[string]int64{"deleted": n})
 }
 
 // GetStats handles GET /api/v1/stats.
