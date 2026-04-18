@@ -10,25 +10,25 @@ package store
 const (
 	// queryInsertJob inserts a new job row and returns its persisted state.
 	// Parameters: $1=id, $2=type, $3=payload, $4=priority, $5=max_attempts,
-	//             $6=queue_name, $7=scheduled_at, $8=api_key_id (nullable UUID).
+	//             $6=queue_name, $7=scheduled_at, $8=api_key_id, $9=expires_at.
 	queryInsertJob = `
 		INSERT INTO jobs (
 			id, type, payload, priority, status, attempts, max_attempts,
-			queue_name, scheduled_at, created_at, api_key_id
+			queue_name, scheduled_at, created_at, api_key_id, expires_at
 		) VALUES (
-			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW(), $8
+			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW(), $8, $9
 		)
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id`
+			worker_id, error_message, result, api_key_id, expires_at`
 
 	// queryGetJobByID fetches a single job by its UUID primary key.
 	queryGetJobByID = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id
+			worker_id, error_message, result, api_key_id, expires_at
 		FROM jobs
 		WHERE id = $1`
 
@@ -44,7 +44,7 @@ const (
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id
+			worker_id, error_message, result, api_key_id, expires_at
 		FROM jobs
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
@@ -81,7 +81,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id`
+			worker_id, error_message, result, api_key_id, expires_at`
 
 	// queryMarkJobCompleted transitions a running job to completed and stores result.
 	queryMarkJobCompleted = `
@@ -94,7 +94,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id`
+			worker_id, error_message, result, api_key_id, expires_at`
 
 	// queryMarkJobFailed transitions a running job to failed and records the error.
 	queryMarkJobFailed = `
@@ -107,7 +107,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id`
+			worker_id, error_message, result, api_key_id, expires_at`
 
 	// queryMarkJobDead transitions a failed job to dead (moves to DLQ table).
 	queryMarkJobDead = `
@@ -140,17 +140,17 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id`
+			worker_id, error_message, result, api_key_id, expires_at`
 
 	// --- Dead-Letter Queue ---
 
 	// queryInsertDLQ records a dead job in the dead_letter_jobs table.
-	// Parameters: $1...$9 as before, $10=api_key_id (nullable UUID).
+	// Parameters: $1...$9 as before, $10=api_key_id, $11=expires_at.
 	queryInsertDLQ = `
 		INSERT INTO dead_letter_jobs (
 			id, type, payload, priority, queue_name, max_attempts,
-			original_created_at, last_error, total_attempts, api_key_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			original_created_at, last_error, total_attempts, api_key_id, expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (id) DO NOTHING`
 
 	// queryListDLQ fetches DLQ entries ordered by most recently dead.
@@ -160,7 +160,7 @@ const (
 		SELECT
 			id, type, payload, priority, queue_name, max_attempts,
 			died_at, original_created_at, last_error, total_attempts,
-			requeued, requeued_at, new_job_id, api_key_id
+			requeued, requeued_at, new_job_id, api_key_id, expires_at
 		FROM dead_letter_jobs
 		WHERE ($1 = TRUE OR requeued = FALSE)
 		  AND ($2::uuid IS NULL OR api_key_id = $2::uuid)
@@ -185,9 +185,31 @@ const (
 		SELECT
 			id, type, payload, priority, queue_name, max_attempts,
 			died_at, original_created_at, last_error, total_attempts,
-			requeued, requeued_at, new_job_id, api_key_id
+			requeued, requeued_at, new_job_id, api_key_id, expires_at
 		FROM dead_letter_jobs
 		WHERE id = $1`
+
+	// queryPurgeExpiredJobs deletes terminal jobs whose expires_at has passed.
+	// Returns the count of deleted rows.
+	queryPurgeExpiredJobs = `
+		DELETE FROM jobs
+		WHERE expires_at IS NOT NULL
+		  AND expires_at <= NOW()
+		  AND status IN ('completed', 'failed', 'dead', 'cancelled')`
+
+	// queryPurgeExpiredDLQ deletes DLQ entries whose expires_at has passed.
+	queryPurgeExpiredDLQ = `
+		DELETE FROM dead_letter_jobs
+		WHERE expires_at IS NOT NULL AND expires_at <= NOW()`
+
+	// queryPurgeJobsBefore bulk-deletes terminal jobs older than a given time.
+	// Used by DELETE /api/v1/jobs?before=<timestamp>.
+	// Parameters: $1=before (timestamptz), $2=api_key_id (nullable UUID).
+	queryPurgeJobsBefore = `
+		DELETE FROM jobs
+		WHERE created_at < $1
+		  AND status IN ('completed', 'failed', 'dead', 'cancelled')
+		  AND ($2::uuid IS NULL OR api_key_id = $2::uuid)`
 
 	// --- Workers ---
 
@@ -317,7 +339,7 @@ const (
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id
+			worker_id, error_message, result, api_key_id, expires_at
 		FROM jobs
 		WHERE id = ANY($1)
 		ORDER BY created_at ASC`
