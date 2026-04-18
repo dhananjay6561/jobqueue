@@ -580,8 +580,16 @@ func (h *JobHandler) PurgeJobs(w http.ResponseWriter, r *http.Request) {
 
 // GetStats handles GET /api/v1/stats.
 // Returns job counts per status, jobs/min throughput, DLQ size, and active workers.
+// Scoped to the calling API key; admin key returns global stats.
 func (h *JobHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.store.GetStats(r.Context())
+	var apiKeyID *uuid.UUID
+	if !middleware.IsAdminFromContext(r.Context()) {
+		if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+			apiKeyID = &key.ID
+		}
+	}
+
+	stats, err := h.store.GetStats(r.Context(), apiKeyID)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "failed to get stats: "+err.Error())
 		return

@@ -79,7 +79,7 @@ func prometheusHandler(jobStore store.JobStorer, hub *ws.Hub) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
-		if stats, err := jobStore.GetStats(ctx); err == nil {
+		if stats, err := jobStore.GetStats(ctx, nil); err == nil {
 			prom.queueDepth.Set(float64(stats.QueueDepth))
 			prom.activeWorkers.Set(float64(stats.ActiveWorkers))
 		}

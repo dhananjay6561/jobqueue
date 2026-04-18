@@ -283,7 +283,7 @@ func runStatsBroadcast(ctx context.Context, jobStore store.JobStorer, hub *ws.Hu
 			return
 		case <-ticker.C:
 			statsCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-			stats, err := jobStore.GetStats(statsCtx)
+			stats, err := jobStore.GetStats(statsCtx, nil) // nil = global (all keys)
 			cancel()
 
 			if err != nil {

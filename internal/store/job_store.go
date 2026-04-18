@@ -123,7 +123,7 @@ type JobStorer interface {
 	PurgeJobsBefore(ctx context.Context, before time.Time, apiKeyID *uuid.UUID) (int64, error)
 
 	// Statistics
-	GetStats(ctx context.Context) (JobStats, error)
+	GetStats(ctx context.Context, apiKeyID *uuid.UUID) (JobStats, error)
 
 	// Webhooks
 	CreateWebhook(ctx context.Context, url, secret string, events []string, enabled bool) (*queue.Webhook, error)
@@ -641,12 +641,12 @@ func (db *DB) ListWorkers(ctx context.Context, activeOnly bool) ([]*queue.Worker
 
 // ─── Statistics ───────────────────────────────────────────────────────────────
 
-// GetStats returns aggregated queue metrics for the stats endpoint.
-func (db *DB) GetStats(ctx context.Context) (JobStats, error) {
+// GetStats returns aggregated queue metrics, optionally scoped to one API key.
+func (db *DB) GetStats(ctx context.Context, apiKeyID *uuid.UUID) (JobStats, error) {
 	var stats JobStats
 
 	// Count per status — populate flat fields directly.
-	rows, err := db.pool.Query(ctx, queryJobStats)
+	rows, err := db.pool.Query(ctx, queryJobStats, apiKeyID)
 	if err != nil {
 		return stats, fmt.Errorf("query job stats: %w", err)
 	}
@@ -684,7 +684,7 @@ func (db *DB) GetStats(ctx context.Context) (JobStats, error) {
 	}
 
 	// Jobs completed in the last minute.
-	if err := db.pool.QueryRow(ctx, queryJobsPerMinute).Scan(&stats.JobsPerMinute); err != nil {
+	if err := db.pool.QueryRow(ctx, queryJobsPerMinute, apiKeyID).Scan(&stats.JobsPerMinute); err != nil {
 		return stats, fmt.Errorf("query jobs per minute: %w", err)
 	}
 

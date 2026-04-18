@@ -198,7 +198,7 @@ func (m *mockJobStore) MarkWorkerStopped(_ context.Context, _ string) error     
 func (m *mockJobStore) ListWorkers(_ context.Context, _ bool) ([]*queue.WorkerInfo, error) {
 	return m.workers, nil
 }
-func (m *mockJobStore) GetStats(_ context.Context) (store.JobStats, error) {
+func (m *mockJobStore) GetStats(_ context.Context, _ *uuid.UUID) (store.JobStats, error) {
 	return store.JobStats{}, nil
 }
 func (m *mockJobStore) Ping(_ context.Context) error { return nil }

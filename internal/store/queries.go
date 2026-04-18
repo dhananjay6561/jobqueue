@@ -252,16 +252,21 @@ const (
 
 	// --- Stats ---
 
-	// queryJobStats returns the count of jobs in each status.
+	// queryJobStats returns the count of jobs in each status, optionally scoped
+	// to a single API key. Parameter: $1=api_key_id (nullable UUID).
 	queryJobStats = `
 		SELECT status, COUNT(*) as count
 		FROM jobs
+		WHERE ($1::uuid IS NULL OR api_key_id = $1::uuid)
 		GROUP BY status`
 
 	// queryJobsPerMinute returns jobs completed in the last 60 seconds.
+	// Parameter: $1=api_key_id (nullable UUID).
 	queryJobsPerMinute = `
 		SELECT COUNT(*) FROM jobs
-		WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '1 minute'`
+		WHERE status = 'completed'
+		  AND completed_at >= NOW() - INTERVAL '1 minute'
+		  AND ($1::uuid IS NULL OR api_key_id = $1::uuid)`
 
 	// queryDLQCount returns the total number of un-requeued DLQ entries.
 	queryDLQCount = `
