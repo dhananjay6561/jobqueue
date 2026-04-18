@@ -7,6 +7,13 @@ import type {
   PaginatedResponse,
 } from '@/types'
 
+export interface CursorPage<T> {
+  items: T[]
+  next_cursor: string
+  has_more: boolean
+  limit: number
+}
+
 export async function listJobs(params: JobListParams): Promise<PaginatedResponse<Job>> {
   const { data } = await apiClient.get<ApiResponse<Job[]>>('/jobs', { params })
   if (data.error) throw new Error(data.error)
@@ -25,6 +32,13 @@ export async function enqueueJob(payload: EnqueueJobRequest): Promise<Job> {
   if (data.error) throw new Error(data.error)
   if (!data.data) throw new Error('Failed to enqueue job')
   return data.data
+}
+
+export async function listJobsCursor(params: {
+  status?: string; type?: string; queue?: string; cursor?: string; limit?: number
+}): Promise<CursorPage<Job>> {
+  const { data } = await apiClient.get<CursorPage<Job>>('/jobs/cursor', { params })
+  return data
 }
 
 export async function enqueueBatch(jobs: EnqueueJobRequest[]): Promise<Job[]> {
