@@ -10,25 +10,25 @@ package store
 const (
 	// queryInsertJob inserts a new job row and returns its persisted state.
 	// Parameters: $1=id, $2=type, $3=payload, $4=priority, $5=max_attempts,
-	//             $6=queue_name, $7=scheduled_at, $8=api_key_id, $9=expires_at.
+	//             $6=queue_name, $7=scheduled_at, $8=api_key_id, $9=expires_at, $10=tags.
 	queryInsertJob = `
 		INSERT INTO jobs (
 			id, type, payload, priority, status, attempts, max_attempts,
-			queue_name, scheduled_at, created_at, api_key_id, expires_at
+			queue_name, scheduled_at, created_at, api_key_id, expires_at, tags
 		) VALUES (
-			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW(), $8, $9
+			$1, $2, $3, $4, 'pending', 0, $5, $6, $7, NOW(), $8, $9, $10
 		)
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at`
+			worker_id, error_message, result, api_key_id, expires_at, tags`
 
 	// queryGetJobByID fetches a single job by its UUID primary key.
 	queryGetJobByID = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at
+			worker_id, error_message, result, api_key_id, expires_at, tags
 		FROM jobs
 		WHERE id = $1`
 
@@ -36,26 +36,24 @@ const (
 	queryGetJobResult = `
 		SELECT result FROM jobs WHERE id = $1`
 
-	// queryListJobs fetches a page of jobs with optional status, type,
-	// queue_name, and api_key_id filters. Results are ordered by created_at DESC.
-	// Parameters: $1=status (nullable), $2=type (nullable), $3=queue (nullable),
-	//             $4=api_key_id (nullable UUID), $5=limit, $6=offset.
+	// queryListJobs fetches a page of jobs with optional filters.
+	// Parameters: $1=status, $2=type, $3=queue, $4=api_key_id, $5=tags (nullable jsonb), $6=limit, $7=offset.
 	queryListJobs = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at
+			worker_id, error_message, result, api_key_id, expires_at, tags
 		FROM jobs
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
 			AND ($2::text IS NULL OR type = $2)
 			AND ($3::text IS NULL OR queue_name = $3)
 			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)
+			AND ($5::jsonb IS NULL OR tags @> $5::jsonb)
 		ORDER BY created_at DESC
-		LIMIT $5 OFFSET $6`
+		LIMIT $6 OFFSET $7`
 
-	// queryCountJobs returns the total count matching the same filters as
-	// queryListJobs. Used to compute pagination metadata.
+	// queryCountJobs returns the total count matching the same filters as queryListJobs.
 	queryCountJobs = `
 		SELECT COUNT(*)
 		FROM jobs
@@ -63,7 +61,8 @@ const (
 			($1::job_status IS NULL OR status = $1::job_status)
 			AND ($2::text IS NULL OR type = $2)
 			AND ($3::text IS NULL OR queue_name = $3)
-			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)`
+			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)
+			AND ($5::jsonb IS NULL OR tags @> $5::jsonb)`
 
 	// queryUpdateJobStatus transitions a job to a new status and records
 	// started_at / completed_at / error_message as appropriate.
@@ -81,7 +80,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at`
+			worker_id, error_message, result, api_key_id, expires_at, tags`
 
 	// queryMarkJobCompleted transitions a running job to completed and stores result.
 	queryMarkJobCompleted = `
@@ -94,7 +93,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at`
+			worker_id, error_message, result, api_key_id, expires_at, tags`
 
 	// queryMarkJobFailed transitions a running job to failed and records the error.
 	queryMarkJobFailed = `
@@ -107,7 +106,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at`
+			worker_id, error_message, result, api_key_id, expires_at, tags`
 
 	// queryMarkJobDead transitions a failed job to dead (moves to DLQ table).
 	queryMarkJobDead = `
@@ -140,7 +139,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at`
+			worker_id, error_message, result, api_key_id, expires_at, tags`
 
 	// --- Dead-Letter Queue ---
 
@@ -340,31 +339,30 @@ const (
 		          cron_expression, enabled, last_run_at, next_run_at, created_at`
 
 	// queryListJobsCursor is a keyset-pagination variant of queryListJobs.
-	// The cursor is an opaque (created_at, id) pair encoded as two params.
-	// Parameters: $1=status, $2=type, $3=queue, $4=api_key_id,
-	//             $5=cursor_created_at (nullable timestamptz),
-	//             $6=cursor_id (nullable uuid), $7=limit.
+	// Parameters: $1=status, $2=type, $3=queue, $4=api_key_id, $5=tags,
+	//             $6=cursor_created_at, $7=cursor_id, $8=limit.
 	queryListJobsCursor = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at
+			worker_id, error_message, result, api_key_id, expires_at, tags
 		FROM jobs
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
 			AND ($2::text IS NULL OR type = $2)
 			AND ($3::text IS NULL OR queue_name = $3)
 			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)
-			AND ($5::timestamptz IS NULL OR (created_at, id) < ($5::timestamptz, $6::uuid))
+			AND ($5::jsonb IS NULL OR tags @> $5::jsonb)
+			AND ($6::timestamptz IS NULL OR (created_at, id) < ($6::timestamptz, $7::uuid))
 		ORDER BY created_at DESC, id DESC
-		LIMIT $7`
+		LIMIT $8`
 
 	// queryGetJobsByIDs fetches multiple jobs by their UUIDs (used after batch insert).
 	queryGetJobsByIDs = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message, result, api_key_id, expires_at
+			worker_id, error_message, result, api_key_id, expires_at, tags
 		FROM jobs
 		WHERE id = ANY($1)
 		ORDER BY created_at ASC`
