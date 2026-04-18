@@ -24,6 +24,7 @@ const navItems: NavItem[] = [
   { to: '/jobs', label: 'Jobs', icon: <NavIcon path="M4 5h12M4 10h12M4 15h7" /> },
   { to: '/workers', label: 'Workers', icon: <NavIcon path="M13 6a3 3 0 11-6 0 3 3 0 016 0zM3 19a7 7 0 0114 0" /> },
   { to: '/dlq', label: 'Dead Letter', icon: <NavIcon path="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /> },
+  { to: '/cron', label: 'Cron', icon: <NavIcon path="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3v5l3 3" /> },
 ]
 
 const wsStatusConfig = {
