@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -96,6 +97,9 @@ func (h *JobHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 	if req.TTLSeconds > 0 {
 		exp := time.Now().Add(time.Duration(req.TTLSeconds) * time.Second)
 		job.ExpiresAt = &exp
+	}
+	if len(req.Tags) > 0 {
+		job.Tags = req.Tags
 	}
 	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
 		job.APIKeyID = &key.ID
@@ -186,6 +190,9 @@ func (h *JobHandler) EnqueueJobBatch(w http.ResponseWriter, r *http.Request) {
 			exp := now.Add(time.Duration(req.TTLSeconds) * time.Second)
 			job.ExpiresAt = &exp
 		}
+		if len(req.Tags) > 0 {
+			job.Tags = req.Tags
+		}
 		if key != nil {
 			job.APIKeyID = &key.ID
 		}
@@ -261,6 +268,7 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		Status:    queryParamString(r, "status"),
 		Type:      queryParamString(r, "type"),
 		QueueName: queryParamString(r, "queue"),
+		Tags:      parseTagsParam(r),
 		Limit:     queryParamInt(r, "limit", 20),
 		Offset:    queryParamInt(r, "offset", 0),
 	}
@@ -608,6 +616,25 @@ func parseUUID(r *http.Request, param string) (uuid.UUID, error) {
 		return uuid.UUID{}, errors.New("invalid UUID: " + raw)
 	}
 	return id, nil
+}
+
+// parseTagsParam parses ?tags=key:val,key2:val2 into a map.
+func parseTagsParam(r *http.Request) map[string]string {
+	raw := queryParamString(r, "tags")
+	if raw == "" {
+		return nil
+	}
+	tags := make(map[string]string)
+	for _, pair := range strings.Split(raw, ",") {
+		kv := strings.SplitN(pair, ":", 2)
+		if len(kv) == 2 {
+			tags[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+	}
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
 }
 
 // jobBelongsToKey returns false when a DB-backed API key is present in context

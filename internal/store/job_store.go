@@ -31,6 +31,7 @@ type JobFilter struct {
 	Type      string
 	QueueName string
 	APIKeyID  *uuid.UUID
+	Tags      map[string]string // filter jobs that contain all specified tag key-values
 	Limit     int
 	Offset    int
 }
@@ -66,6 +67,7 @@ type JobCursorFilter struct {
 	Type      string
 	QueueName string
 	APIKeyID  *uuid.UUID
+	Tags      map[string]string
 	Cursor    string // opaque token from a previous CursorPage.NextCursor
 	Limit     int
 }
@@ -167,6 +169,7 @@ func (db *DB) CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error)
 		job.ScheduledAt,
 		job.APIKeyID,
 		job.ExpiresAt,
+		job.Tags,
 	)
 
 	result, err := scanJob(row)
@@ -196,6 +199,7 @@ func (db *DB) CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.J
 			job.ScheduledAt,
 			job.APIKeyID,
 			job.ExpiresAt,
+			job.Tags,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("insert job %s in batch: %w", job.ID, err)
@@ -256,7 +260,7 @@ func (db *DB) ListJobsCursor(ctx context.Context, f JobCursorFilter) (CursorPage
 	}
 
 	rows, err := db.pool.Query(ctx, queryListJobsCursor,
-		statusParam, typeParam, queueParam, f.APIKeyID,
+		statusParam, typeParam, queueParam, f.APIKeyID, nullableJSONB(f.Tags),
 		cursorTime, cursorID, f.Limit+1,
 	)
 	if err != nil {
@@ -324,15 +328,17 @@ func (db *DB) ListJobs(ctx context.Context, filter JobFilter) (Page[*queue.Job],
 	typeParam := nullableString(filter.Type)
 	queueParam := nullableString(filter.QueueName)
 
+	tagsParam := nullableJSONB(filter.Tags)
+
 	// Fetch total count for pagination metadata.
 	var totalCount int64
-	countRow := db.pool.QueryRow(ctx, queryCountJobs, statusParam, typeParam, queueParam, filter.APIKeyID)
+	countRow := db.pool.QueryRow(ctx, queryCountJobs, statusParam, typeParam, queueParam, filter.APIKeyID, tagsParam)
 	if err := countRow.Scan(&totalCount); err != nil {
 		return Page[*queue.Job]{}, fmt.Errorf("count jobs: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, queryListJobs,
-		statusParam, typeParam, queueParam, filter.APIKeyID, filter.Limit, filter.Offset)
+		statusParam, typeParam, queueParam, filter.APIKeyID, tagsParam, filter.Limit, filter.Offset)
 	if err != nil {
 		return Page[*queue.Job]{}, fmt.Errorf("list jobs: %w", err)
 	}
@@ -730,6 +736,7 @@ func scanJob(row pgxScanner) (*queue.Job, error) {
 		&job.Result,
 		&job.APIKeyID,
 		&job.ExpiresAt,
+		&job.Tags,
 	)
 	if err != nil {
 		return nil, err
@@ -774,6 +781,16 @@ func nullableString(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// nullableJSONB converts a nil or empty map to nil (NULL in SQL) so the tags
+// filter is skipped, and marshals a non-empty map to a JSON byte slice.
+func nullableJSONB(m map[string]string) []byte {
+	if len(m) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(m)
+	return b
 }
 
 // nullableTime converts a zero time.Time to nil for nullable SQL parameters.
