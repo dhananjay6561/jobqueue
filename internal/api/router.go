@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"time"
 
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -28,6 +29,7 @@ type RouterConfig struct {
 	DefaultMaxAttempts int
 	RateLimitRPS       int
 	RateLimitBurst     int
+	StaticDir          string // path to built frontend; empty = no UI served
 }
 
 // NewRouter constructs and returns the application's HTTP router.
@@ -84,6 +86,21 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		// Stats
 		r.Get("/stats", jobHandler.GetStats)
 	})
+
+	// Serve the React SPA if a static dir is configured.
+	if cfg.StaticDir != "" {
+		fs := http.FileServer(http.Dir(cfg.StaticDir))
+		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+			// If the requested file exists, serve it; otherwise fall back to
+			// index.html so the React router handles the path.
+			path := cfg.StaticDir + r.URL.Path
+			if _, err := os.Stat(path); os.IsNotExist(err) {
+				http.ServeFile(w, r, cfg.StaticDir+"/index.html")
+				return
+			}
+			fs.ServeHTTP(w, r)
+		})
+	}
 
 	return r
 }

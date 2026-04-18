@@ -137,6 +137,7 @@ func main() {
 		DefaultMaxAttempts: cfg.Retry.DefaultMaxAttempts,
 		RateLimitRPS:       cfg.Server.RateLimit,
 		RateLimitBurst:     cfg.Server.RateBurst,
+		StaticDir:          "/frontend/dist",
 	})
 
 	httpServer := &http.Server{

@@ -1,18 +1,24 @@
-# ─── Stage 1: Builder ────────────────────────────────────────────────────────
-# Uses the official Go image to compile a statically linked binary.
+# ─── Stage 1: Frontend builder ───────────────────────────────────────────────
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ .
+RUN npm run build
+
+# ─── Stage 2: Go builder ─────────────────────────────────────────────────────
 FROM golang:1.26-alpine AS builder
 
-# Install git for modules that use go-import meta tags, and ca-certificates
-# so the final image can reach TLS endpoints.
 RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /build
 
-# Download dependencies first so this layer is cached between code changes.
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source and build a fully static binary with debug info stripped.
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
@@ -32,6 +38,9 @@ COPY --from=builder /jobqueue /jobqueue
 
 # Copy migrations so RunMigrations can find them at runtime.
 COPY --from=builder /build/migrations /migrations
+
+# Copy the built React frontend.
+COPY --from=frontend-builder /frontend/dist /frontend/dist
 
 # Copy TLS certificates for outgoing HTTPS calls.
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
