@@ -11,6 +11,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -122,6 +123,90 @@ func (h *JobHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusCreated, createdJob)
+}
+
+// EnqueueJobBatch handles POST /api/v1/jobs/batch.
+// Accepts an array of EnqueueRequest objects and creates all jobs atomically.
+// Returns 201 with the array of created jobs, or 400/422 on validation failure.
+func (h *JobHandler) EnqueueJobBatch(w http.ResponseWriter, r *http.Request) {
+	var reqs []queue.EnqueueRequest
+	if err := decodeJSON(r, &reqs); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	if len(reqs) == 0 {
+		writeError(w, r, http.StatusUnprocessableEntity, "batch must contain at least one job")
+		return
+	}
+	if len(reqs) > 500 {
+		writeError(w, r, http.StatusUnprocessableEntity, "batch size exceeds maximum of 500")
+		return
+	}
+
+	key := middleware.APIKeyFromContext(r.Context())
+	now := time.Now()
+
+	jobs := make([]*queue.Job, 0, len(reqs))
+	for i, req := range reqs {
+		if req.Type == "" {
+			writeError(w, r, http.StatusUnprocessableEntity, fmt.Sprintf("job[%d]: field 'type' is required", i))
+			return
+		}
+		if req.Priority < queue.PriorityMin || req.Priority > queue.PriorityMax {
+			req.Priority = queue.PriorityDefault
+		}
+		if req.MaxAttempts <= 0 {
+			req.MaxAttempts = h.defaultMaxAttempts
+		}
+		if req.QueueName == "" {
+			req.QueueName = queue.DefaultQueueName
+		}
+		scheduledAt := now
+		if req.ScheduledAt != nil && req.ScheduledAt.After(now) {
+			scheduledAt = *req.ScheduledAt
+		}
+		if len(req.Payload) == 0 {
+			req.Payload = []byte("{}")
+		}
+
+		job := &queue.Job{
+			ID:          uuid.New(),
+			Type:        req.Type,
+			Payload:     req.Payload,
+			Priority:    req.Priority,
+			MaxAttempts: req.MaxAttempts,
+			QueueName:   req.QueueName,
+			ScheduledAt: scheduledAt,
+		}
+		if key != nil {
+			job.APIKeyID = &key.ID
+		}
+		jobs = append(jobs, job)
+	}
+
+	created, err := h.store.CreateJobBatch(r.Context(), jobs)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to persist batch: "+err.Error())
+		return
+	}
+
+	for _, job := range created {
+		if err := h.broker.Enqueue(r.Context(), job); err != nil {
+			// Non-fatal: job is persisted, operator can retry individually.
+			continue
+		}
+		queue.CounterJobsEnqueued.Add(1)
+		if h.publisher != nil {
+			h.publisher.Publish(queue.Event{
+				Type:    queue.EventJobEnqueued,
+				JobID:   job.ID.String(),
+				JobType: job.Type,
+				Payload: map[string]any{"job": job},
+			})
+		}
+	}
+
+	writeJSON(w, r, http.StatusCreated, created)
 }
 
 // ListJobs handles GET /api/v1/jobs.

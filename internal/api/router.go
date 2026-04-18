@@ -76,6 +76,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.Store))
 		// Jobs — enqueue is metered, reads are free
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs", jobHandler.EnqueueJob)
+		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs/batch", jobHandler.EnqueueJobBatch)
 		r.Get("/jobs", jobHandler.ListJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
 		r.Get("/jobs/{id}/result", jobHandler.GetJobResult)
