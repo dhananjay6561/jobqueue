@@ -448,6 +448,13 @@ func (h *JobHandler) RequeueDLQJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		if entry.APIKeyID == nil || *entry.APIKeyID != key.ID {
+			writeError(w, r, http.StatusNotFound, "DLQ entry not found")
+			return
+		}
+	}
+
 	if entry.Requeued {
 		writeError(w, r, http.StatusConflict, "DLQ entry has already been requeued")
 		return
