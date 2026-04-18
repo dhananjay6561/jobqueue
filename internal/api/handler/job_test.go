@@ -178,7 +178,7 @@ func (m *mockJobStore) ListWorkers(_ context.Context, _ bool) ([]*queue.WorkerIn
 	return m.workers, nil
 }
 func (m *mockJobStore) GetStats(_ context.Context) (store.JobStats, error) {
-	return store.JobStats{StatusCounts: map[string]int64{}}, nil
+	return store.JobStats{}, nil
 }
 func (m *mockJobStore) Ping(_ context.Context) error { return nil }
 
