@@ -10,9 +10,16 @@ export const apiClient = axios.create({
   timeout: 15000,
 })
 
-// Request interceptor — add request ID for tracing
+// Request interceptor — inject API key from localStorage and add request ID
 apiClient.interceptors.request.use((config) => {
   config.headers['X-Request-ID'] = crypto.randomUUID()
+  try {
+    const stored = localStorage.getItem('jobqueue-ui')
+    const key: string = stored ? (JSON.parse(stored)?.state?.apiKey ?? '') : ''
+    if (key) config.headers['X-API-Key'] = key
+  } catch {
+    // ignore parse errors
+  }
   return config
 })
 
