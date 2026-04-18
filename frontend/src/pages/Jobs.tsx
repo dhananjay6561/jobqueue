@@ -3,6 +3,7 @@ import type { Job, JobStatus } from '@/types'
 import { JobTable } from '@/components/jobs/JobTable'
 import { JobDetailDrawer } from '@/components/jobs/JobDetailDrawer'
 import { EnqueueJobModal } from '@/components/jobs/EnqueueJobModal'
+import { BatchEnqueueModal } from '@/components/jobs/BatchEnqueueModal'
 import { Button } from '@/components/ui/Button'
 import { useUiStore } from '@/store/uiStore'
 import { QUEUE_NAMES } from '@/utils/constants'
@@ -20,6 +21,7 @@ const STATUS_FILTERS: Array<{ value: JobStatus | 'all'; label: string }> = [
 export function Jobs() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [enqueueOpen, setEnqueueOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
   const { jobFilters, setJobFilters, resetJobFilters } = useUiStore()
 
   const inputClass =
@@ -30,12 +32,17 @@ export function Jobs() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-[#e2e2f0]">Jobs</h1>
-        <Button variant="primary" size="md" onClick={() => setEnqueueOpen(true)}>
-          <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v10M3 8h10" />
-          </svg>
-          Enqueue Job
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="md" onClick={() => setBatchOpen(true)}>
+            Batch
+          </Button>
+          <Button variant="primary" size="md" onClick={() => setEnqueueOpen(true)}>
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 3v10M3 8h10" />
+            </svg>
+            Enqueue Job
+          </Button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -92,6 +99,7 @@ export function Jobs() {
       {/* Modals / Drawers */}
       <JobDetailDrawer jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
       <EnqueueJobModal isOpen={enqueueOpen} onClose={() => setEnqueueOpen(false)} />
+      <BatchEnqueueModal isOpen={batchOpen} onClose={() => setBatchOpen(false)} />
     </div>
   )
 }
