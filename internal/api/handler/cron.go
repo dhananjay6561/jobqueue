@@ -18,6 +18,7 @@ import (
 type CronStorer interface {
 	CreateCronSchedule(ctx context.Context, s *queue.CronSchedule) (*queue.CronSchedule, error)
 	ListCronSchedules(ctx context.Context) ([]*queue.CronSchedule, error)
+	PatchCronSchedule(ctx context.Context, id uuid.UUID, enabled *bool, cronExpr *string, payload []byte, nextRunAt *time.Time) (*queue.CronSchedule, error)
 	DeleteCronSchedule(ctx context.Context, id uuid.UUID) error
 }
 
@@ -123,6 +124,54 @@ func (h *CronHandler) ListCronSchedules(w http.ResponseWriter, r *http.Request) 
 		scheds = []*queue.CronSchedule{}
 	}
 	writeJSON(w, r, http.StatusOK, scheds)
+}
+
+// PatchCronSchedule handles PATCH /api/v1/cron/:id.
+// All fields are optional; only provided fields are updated.
+func (h *CronHandler) PatchCronSchedule(w http.ResponseWriter, r *http.Request) {
+	rawID := chi.URLParam(r, "id")
+	id, err := uuid.Parse(rawID)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid cron schedule id")
+		return
+	}
+
+	var body struct {
+		Enabled        *bool           `json:"enabled"`
+		CronExpression *string         `json:"cron_expression"`
+		Payload        json.RawMessage `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	var nextRunAt *time.Time
+	if body.CronExpression != nil {
+		expr, err := queue.ParseCron(*body.CronExpression)
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid cron_expression: "+err.Error())
+			return
+		}
+		t, err := expr.NextAfter(time.Now().UTC())
+		if err != nil {
+			writeError(w, r, http.StatusBadRequest, "cron_expression produces no future run times")
+			return
+		}
+		nextRunAt = &t
+	}
+
+	var payloadBytes []byte
+	if len(body.Payload) > 0 && string(body.Payload) != "null" {
+		payloadBytes = body.Payload
+	}
+
+	updated, err := h.store.PatchCronSchedule(r.Context(), id, body.Enabled, body.CronExpression, payloadBytes, nextRunAt)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to update cron schedule: "+err.Error())
+		return
+	}
+	writeJSON(w, r, http.StatusOK, updated)
 }
 
 // DeleteCronSchedule handles DELETE /api/v1/cron/:id.

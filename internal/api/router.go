@@ -101,6 +101,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		// Cron schedules
 		r.Get("/cron", cronHandler.ListCronSchedules)
 		r.Post("/cron", cronHandler.CreateCronSchedule)
+		r.Patch("/cron/{id}", cronHandler.PatchCronSchedule)
 		r.Delete("/cron/{id}", cronHandler.DeleteCronSchedule)
 
 		// API key management
