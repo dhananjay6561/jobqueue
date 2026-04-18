@@ -25,6 +25,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # package manager, just the binary and TLS certificates.
 FROM gcr.io/distroless/static-debian12:nonroot
 
+WORKDIR /
+
 # Copy the compiled binary from the builder stage.
 COPY --from=builder /jobqueue /jobqueue
 
