@@ -114,6 +114,28 @@ func main() {
 	// fanout publishes to both WebSocket hub and webhook dispatcher.
 	fanout := &fanoutPublisher{hub: hub, dispatcher: webhookDispatcher}
 
+	// ── Expired-job purge ticker (every hour) ─────────────────────────────────
+	purgeCtx, purgeCancel := context.WithCancel(ctx)
+	purgeDone := make(chan struct{})
+	go func() {
+		defer close(purgeDone)
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-purgeCtx.Done():
+				return
+			case <-ticker.C:
+				n, err := dbStore.PurgeExpiredJobs(purgeCtx)
+				if err != nil {
+					log.Error().Err(err).Msg("purge expired jobs failed")
+				} else if n > 0 {
+					log.Info().Int64("deleted", n).Msg("purged expired jobs")
+				}
+			}
+		}
+	}()
+
 	// ── Stats broadcast ticker (every 5 seconds) ───────────────────────────────
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	statsDone := make(chan struct{})
@@ -216,7 +238,11 @@ func main() {
 	statsCancel()
 	<-statsDone
 
-	// 3. Stop the cron promoter.
+	// 3. Stop the expired-job purger.
+	purgeCancel()
+	<-purgeDone
+
+	// 4. Stop the cron promoter.
 	cronCancel()
 	<-cronDone
 
