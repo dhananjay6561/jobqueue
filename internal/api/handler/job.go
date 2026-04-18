@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/dj/jobqueue/internal/api/middleware"
 	"github.com/dj/jobqueue/internal/queue"
 	"github.com/dj/jobqueue/internal/store"
 )
@@ -91,6 +92,9 @@ func (h *JobHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 		QueueName:   req.QueueName,
 		ScheduledAt: scheduledAt,
 	}
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		job.APIKeyID = &key.ID
+	}
 
 	createdJob, err := h.store.CreateJob(r.Context(), job)
 	if err != nil {
@@ -135,6 +139,9 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		QueueName: queryParamString(r, "queue"),
 		Limit:     queryParamInt(r, "limit", 20),
 		Offset:    queryParamInt(r, "offset", 0),
+	}
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		filter.APIKeyID = &key.ID
 	}
 
 	page, err := h.store.ListJobs(r.Context(), filter)
@@ -286,6 +293,9 @@ func (h *JobHandler) ListDLQ(w http.ResponseWriter, r *http.Request) {
 		Limit:           queryParamInt(r, "limit", 20),
 		Offset:          queryParamInt(r, "offset", 0),
 	}
+	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+		filter.APIKeyID = &key.ID
+	}
 
 	page, err := h.store.ListDLQ(r.Context(), filter)
 	if err != nil {
@@ -320,7 +330,7 @@ func (h *JobHandler) RequeueDLQJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a fresh job from the DLQ entry.
+	// Create a fresh job from the DLQ entry, preserving API key ownership.
 	newJob := &queue.Job{
 		ID:          uuid.New(),
 		Type:        entry.Type,
@@ -329,6 +339,7 @@ func (h *JobHandler) RequeueDLQJob(w http.ResponseWriter, r *http.Request) {
 		MaxAttempts: entry.MaxAttempts,
 		QueueName:   entry.QueueName,
 		ScheduledAt: time.Now(),
+		APIKeyID:    entry.APIKeyID,
 	}
 
 	createdJob, err := h.store.CreateJob(r.Context(), newJob)
