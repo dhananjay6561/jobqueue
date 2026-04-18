@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"net/http"
 	"os"
 	"os/signal"
@@ -70,14 +71,18 @@ func main() {
 	log.Info().Msg("database connected and migrations applied")
 
 	// ── Connect to Redis ───────────────────────────────────────────────────────
-	redisClient := redis.NewClient(&redis.Options{
+	redisOpts := &redis.Options{
 		Addr:         cfg.Redis.Addr,
 		Password:     cfg.Redis.Password,
 		DB:           cfg.Redis.DB,
 		DialTimeout:  cfg.Redis.DialTimeout,
 		ReadTimeout:  cfg.Redis.ReadTimeout,
 		WriteTimeout: cfg.Redis.WriteTimeout,
-	})
+	}
+	if cfg.Redis.TLS {
+		redisOpts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	redisClient := redis.NewClient(redisOpts)
 	defer func() {
 		if err := redisClient.Close(); err != nil {
 			log.Error().Err(err).Msg("failed to close redis client")

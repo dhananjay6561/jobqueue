@@ -64,6 +64,8 @@ type RedisConfig struct {
 	Password string
 	// DB is the Redis logical database index.
 	DB int
+	// TLS enables TLS for the Redis connection (required by Upstash).
+	TLS bool
 	// DialTimeout is the timeout for establishing a Redis connection.
 	DialTimeout time.Duration
 	// ReadTimeout is the timeout for reading a Redis response.
@@ -148,6 +150,7 @@ func Load() (Config, error) {
 	// --- Redis ---
 	cfg.Redis.Addr = envString("REDIS_ADDR", "localhost:6379")
 	cfg.Redis.Password = os.Getenv("REDIS_PASSWORD")
+	cfg.Redis.TLS = os.Getenv("REDIS_TLS") == "true"
 	if cfg.Redis.DB, err = envInt("REDIS_DB", 0); err != nil {
 		return cfg, fmt.Errorf("REDIS_DB: %w", err)
 	}

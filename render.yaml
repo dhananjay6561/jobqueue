@@ -53,6 +53,8 @@ services:
         value: 3s
       - key: REDIS_WRITE_TIMEOUT
         value: 3s
+      - key: REDIS_TLS
+        value: true           # Upstash requires TLS (rediss://)
 
       # Worker pool — keep workers low on free tier (512 MB RAM)
       - key: WORKER_COUNT
