@@ -59,6 +59,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	wsHandler := handler.NewWSHandler(cfg.Hub)
 	webhookHandler := handler.NewWebhookHandler(cfg.Store)
 	cronHandler := handler.NewCronHandler(cfg.Store)
+	apiKeyHandler := handler.NewAPIKeyHandler(cfg.Store)
 
 	// ── Routes ────────────────────────────────────────────────────────────────
 
@@ -72,9 +73,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// Versioned REST API — optionally gated by API key.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey))
-		// Jobs
-		r.Post("/jobs", jobHandler.EnqueueJob)
+		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.Store))
+		// Jobs — enqueue is metered, reads are free
+		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs", jobHandler.EnqueueJob)
 		r.Get("/jobs", jobHandler.ListJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
 		r.Get("/jobs/{id}/result", jobHandler.GetJobResult)
@@ -100,6 +101,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/cron", cronHandler.ListCronSchedules)
 		r.Post("/cron", cronHandler.CreateCronSchedule)
 		r.Delete("/cron/{id}", cronHandler.DeleteCronSchedule)
+
+		// API key management
+		r.Get("/keys", apiKeyHandler.ListAPIKeys)
+		r.Post("/keys", apiKeyHandler.CreateAPIKey)
+		r.Delete("/keys/{id}", apiKeyHandler.DeleteAPIKey)
+		r.Get("/usage", apiKeyHandler.GetUsage)
 	})
 
 	// Serve the React SPA if a static dir is configured.

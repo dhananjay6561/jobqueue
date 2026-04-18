@@ -102,6 +102,13 @@ type JobStorer interface {
 	ListEnabledWebhooks(ctx context.Context) ([]*queue.Webhook, error)
 	DeleteWebhook(ctx context.Context, id uuid.UUID) error
 
+	// API keys
+	CreateAPIKey(ctx context.Context, name string, tier queue.APIKeyTier) (*queue.APIKey, string, error)
+	GetAPIKeyByHash(ctx context.Context, raw string) (*queue.APIKey, error)
+	ListAPIKeys(ctx context.Context) ([]*queue.APIKey, error)
+	IncrementAPIKeyUsage(ctx context.Context, raw string) (*queue.APIKey, error)
+	DeleteAPIKey(ctx context.Context, id uuid.UUID) error
+
 	// Cron schedules
 	CreateCronSchedule(ctx context.Context, s *queue.CronSchedule) (*queue.CronSchedule, error)
 	ListCronSchedules(ctx context.Context) ([]*queue.CronSchedule, error)

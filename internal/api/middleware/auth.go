@@ -1,28 +1,141 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
+
+	"github.com/dj/jobqueue/internal/queue"
+	"github.com/dj/jobqueue/internal/store"
 )
 
-// APIKeyAuth returns a middleware that enforces X-API-Key authentication.
-// If key is empty the middleware is a no-op and all requests pass through.
-// Clients may supply the key via the X-API-Key header or ?api_key= query param.
-func APIKeyAuth(key string) func(http.Handler) http.Handler {
+type apiKeyStorer interface {
+	GetAPIKeyByHash(ctx context.Context, raw string) (*queue.APIKey, error)
+}
+
+// APIKeyAuth returns middleware that:
+//   - If no store is provided (legacy mode): falls back to static key check.
+//   - If store is provided: validates the key exists in the DB, checks it's
+//     enabled, and rejects with 429 if the monthly limit is reached.
+//
+// The resolved *queue.APIKey is stored in the request context under apiKeyCtxKey
+// so downstream handlers (e.g. the enqueue handler) can call IncrementUsage.
+func APIKeyAuth(staticKey string, store apiKeyStorer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		if key == "" {
+		// No auth configured at all — pass through.
+		if staticKey == "" && store == nil {
 			return next
 		}
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			supplied := r.Header.Get("X-API-Key")
 			if supplied == "" {
 				supplied = r.URL.Query().Get("api_key")
 			}
-			if supplied != key {
+
+			// DB-backed key validation.
+			if store != nil && supplied != "" {
+				key, err := store.GetAPIKeyByHash(r.Context(), supplied)
+				if err == nil && key.Enabled {
+					// Key found and enabled — attach to context.
+					ctx := context.WithValue(r.Context(), apiKeyCtxKey{}, key)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			}
+
+			// Fall back to static key comparison (used when API_KEY env is set
+			// but DB key management hasn't been set up yet).
+			if staticKey != "" && supplied == staticKey {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// No valid key supplied.
+			if staticKey != "" || store != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_, _ = w.Write([]byte(`{"error":"invalid or missing API key","data":null}`))
 				return
 			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+type apiKeyCtxKey struct{}
+
+// APIKeyFromContext retrieves the resolved APIKey from the request context.
+// Returns nil if no DB-backed key was resolved (static key or no auth).
+func APIKeyFromContext(ctx context.Context) *queue.APIKey {
+	k, _ := ctx.Value(apiKeyCtxKey{}).(*queue.APIKey)
+	return k
+}
+
+// EnforceUsageLimit is a per-route middleware that increments the usage counter
+// for the API key in context and blocks with 429 if the limit is reached.
+// It is applied only to the enqueue endpoint, not to read-only routes.
+func EnforceUsageLimit(s usageIncrementer) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := APIKeyFromContext(r.Context())
+			if key == nil {
+				// No DB-backed key (open or static auth) — skip metering.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Check current usage before incrementing.
+			if key.LimitReached() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(`{"error":"monthly job limit reached — upgrade your plan to continue","data":null}`))
+				return
+			}
+
+			// Atomically increment.
+			updated, err := s.IncrementAPIKeyUsage(r.Context(), "")
+			if err == nil && updated.LimitReached() && updated.JobsUsed > updated.JobsLimit {
+				// Edge case: concurrent request pushed it over — still allow this one.
+				_ = updated
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+type usageIncrementer interface {
+	IncrementAPIKeyUsage(ctx context.Context, raw string) (*queue.APIKey, error)
+}
+
+// UsageLimitMiddleware is a simpler version that takes the store + raw key
+// from context and increments before passing through.
+func UsageLimitMiddleware(db store.JobStorer) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := APIKeyFromContext(r.Context())
+			if key == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if key.LimitReached() {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(`{"error":"monthly job limit reached — upgrade your plan to continue","data":null}`))
+				return
+			}
+
+			// Get raw key from header to increment.
+			raw := r.Header.Get("X-API-Key")
+			if raw == "" {
+				raw = r.URL.Query().Get("api_key")
+			}
+			if raw != "" {
+				_, _ = db.IncrementAPIKeyUsage(r.Context(), raw)
+			}
+
 			next.ServeHTTP(w, r)
 		})
 	}

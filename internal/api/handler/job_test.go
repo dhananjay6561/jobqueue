@@ -212,6 +212,19 @@ func (m *mockJobStore) UpdateCronRun(_ context.Context, _ uuid.UUID, _, _ time.T
 	return nil
 }
 func (m *mockJobStore) DeleteCronSchedule(_ context.Context, _ uuid.UUID) error { return nil }
+func (m *mockJobStore) CreateAPIKey(_ context.Context, name string, tier queue.APIKeyTier) (*queue.APIKey, string, error) {
+	return &queue.APIKey{Name: name, Tier: tier}, "qly_test", nil
+}
+func (m *mockJobStore) GetAPIKeyByHash(_ context.Context, _ string) (*queue.APIKey, error) {
+	return nil, store.ErrNotFound
+}
+func (m *mockJobStore) ListAPIKeys(_ context.Context) ([]*queue.APIKey, error) {
+	return []*queue.APIKey{}, nil
+}
+func (m *mockJobStore) IncrementAPIKeyUsage(_ context.Context, _ string) (*queue.APIKey, error) {
+	return &queue.APIKey{}, nil
+}
+func (m *mockJobStore) DeleteAPIKey(_ context.Context, _ uuid.UUID) error { return nil }
 
 // mockBroker records enqueue/remove calls for assertion.
 type mockBroker struct {

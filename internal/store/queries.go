@@ -285,4 +285,34 @@ const (
 
 	queryDeleteCron = `
 		DELETE FROM cron_schedules WHERE id = $1`
+
+	// --- API keys ---
+
+	queryInsertAPIKey = `
+		INSERT INTO api_keys (name, key_hash, key_prefix, tier, jobs_limit)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at`
+
+	queryGetAPIKeyByHash = `
+		SELECT id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at
+		FROM api_keys WHERE key_hash = $1`
+
+	queryListAPIKeys = `
+		SELECT id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at
+		FROM api_keys ORDER BY created_at DESC`
+
+	// Atomically increment jobs_used and return the updated row.
+	// Resets counter if reset_at has passed before incrementing.
+	queryIncrementAPIKeyUsage = `
+		UPDATE api_keys
+		SET
+			jobs_used = CASE WHEN NOW() >= reset_at THEN 1 ELSE jobs_used + 1 END,
+			reset_at  = CASE WHEN NOW() >= reset_at
+			                 THEN date_trunc('month', NOW()) + INTERVAL '1 month'
+			                 ELSE reset_at END
+		WHERE key_hash = $1
+		RETURNING id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at`
+
+	queryDeleteAPIKey = `
+		DELETE FROM api_keys WHERE id = $1`
 )
