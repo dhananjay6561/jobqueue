@@ -49,6 +49,16 @@ func (db *DB) UpdateCronRun(ctx context.Context, id uuid.UUID, lastRun, nextRun 
 	return err
 }
 
+// PatchCronSchedule updates only non-nil fields on a cron schedule.
+func (db *DB) PatchCronSchedule(ctx context.Context, id uuid.UUID, enabled *bool, cronExpr *string, payload []byte, nextRunAt *time.Time) (*queue.CronSchedule, error) {
+	row := db.pool.QueryRow(ctx, queryPatchCron, enabled, cronExpr, payload, nextRunAt, id)
+	s, err := scanCron(row)
+	if err != nil {
+		return nil, fmt.Errorf("patch cron %s: %w", id, err)
+	}
+	return s, nil
+}
+
 // DeleteCronSchedule removes a schedule by ID.
 func (db *DB) DeleteCronSchedule(ctx context.Context, id uuid.UUID) error {
 	tag, err := db.pool.Exec(ctx, queryDeleteCron, id)

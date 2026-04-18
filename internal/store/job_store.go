@@ -117,6 +117,7 @@ type JobStorer interface {
 	ListCronSchedules(ctx context.Context) ([]*queue.CronSchedule, error)
 	ListDueCronSchedules(ctx context.Context, now time.Time) ([]*queue.CronSchedule, error)
 	UpdateCronRun(ctx context.Context, id uuid.UUID, lastRun, nextRun time.Time) error
+	PatchCronSchedule(ctx context.Context, id uuid.UUID, enabled *bool, cronExpr *string, payload []byte, nextRunAt *time.Time) (*queue.CronSchedule, error)
 	DeleteCronSchedule(ctx context.Context, id uuid.UUID) error
 
 	// Infrastructure
