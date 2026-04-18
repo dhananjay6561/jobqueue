@@ -40,6 +40,9 @@ type ServerConfig struct {
 	// all /api/v1/* requests must include it as X-API-Key header or
 	// ?api_key= query param. If empty, authentication is disabled.
 	APIKey string
+	// AdminKey is a separate secret that bypasses per-key scoping so operators
+	// can inspect all jobs globally. Set ADMIN_KEY env var to enable.
+	AdminKey string
 }
 
 // DatabaseConfig holds PostgreSQL connection parameters.
@@ -106,6 +109,7 @@ func Load() (Config, error) {
 	// --- Server ---
 	cfg.Server.Host = envString("SERVER_HOST", "0.0.0.0")
 	cfg.Server.APIKey = os.Getenv("API_KEY")
+	cfg.Server.AdminKey = os.Getenv("ADMIN_KEY")
 	// Render (and many PaaS) inject PORT; fall back to SERVER_PORT then 8080.
 	if os.Getenv("SERVER_PORT") == "" && os.Getenv("PORT") != "" {
 		os.Setenv("SERVER_PORT", os.Getenv("PORT"))
