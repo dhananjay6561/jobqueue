@@ -28,6 +28,7 @@ type JobFilter struct {
 	Status    string
 	Type      string
 	QueueName string
+	APIKeyID  *uuid.UUID
 	Limit     int
 	Offset    int
 }
@@ -35,6 +36,7 @@ type JobFilter struct {
 // DLQFilter defines the optional filters for the ListDLQ query.
 type DLQFilter struct {
 	IncludeRequeued bool
+	APIKeyID        *uuid.UUID
 	Limit           int
 	Offset          int
 }
@@ -135,6 +137,7 @@ func (db *DB) CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error)
 		job.MaxAttempts,
 		job.QueueName,
 		job.ScheduledAt,
+		job.APIKeyID,
 	)
 
 	result, err := scanJob(row)
@@ -174,13 +177,13 @@ func (db *DB) ListJobs(ctx context.Context, filter JobFilter) (Page[*queue.Job],
 
 	// Fetch total count for pagination metadata.
 	var totalCount int64
-	countRow := db.pool.QueryRow(ctx, queryCountJobs, statusParam, typeParam, queueParam)
+	countRow := db.pool.QueryRow(ctx, queryCountJobs, statusParam, typeParam, queueParam, filter.APIKeyID)
 	if err := countRow.Scan(&totalCount); err != nil {
 		return Page[*queue.Job]{}, fmt.Errorf("count jobs: %w", err)
 	}
 
 	rows, err := db.pool.Query(ctx, queryListJobs,
-		statusParam, typeParam, queueParam, filter.Limit, filter.Offset)
+		statusParam, typeParam, queueParam, filter.APIKeyID, filter.Limit, filter.Offset)
 	if err != nil {
 		return Page[*queue.Job]{}, fmt.Errorf("list jobs: %w", err)
 	}
@@ -316,6 +319,7 @@ func (db *DB) InsertDLQ(ctx context.Context, job *queue.Job) error {
 		job.CreatedAt,
 		job.ErrorMessage,
 		job.Attempts,
+		job.APIKeyID,
 	)
 	if err != nil {
 		return fmt.Errorf("insert DLQ entry %s: %w", job.ID, err)
@@ -333,11 +337,11 @@ func (db *DB) ListDLQ(ctx context.Context, filter DLQFilter) (Page[*queue.DLQEnt
 	}
 
 	var totalCount int64
-	if err := db.pool.QueryRow(ctx, queryCountDLQ, filter.IncludeRequeued).Scan(&totalCount); err != nil {
+	if err := db.pool.QueryRow(ctx, queryCountDLQ, filter.IncludeRequeued, filter.APIKeyID).Scan(&totalCount); err != nil {
 		return Page[*queue.DLQEntry]{}, fmt.Errorf("count DLQ entries: %w", err)
 	}
 
-	rows, err := db.pool.Query(ctx, queryListDLQ, filter.IncludeRequeued, filter.Limit, filter.Offset)
+	rows, err := db.pool.Query(ctx, queryListDLQ, filter.IncludeRequeued, filter.APIKeyID, filter.Limit, filter.Offset)
 	if err != nil {
 		return Page[*queue.DLQEntry]{}, fmt.Errorf("list DLQ: %w", err)
 	}
@@ -546,6 +550,7 @@ func scanJob(row pgxScanner) (*queue.Job, error) {
 		&job.WorkerID,
 		&job.ErrorMessage,
 		&job.Result,
+		&job.APIKeyID,
 	)
 	if err != nil {
 		return nil, err
@@ -575,6 +580,7 @@ func scanDLQEntry(row pgxScanner) (*queue.DLQEntry, error) {
 		&entry.Requeued,
 		&entry.RequeuedAt,
 		&entry.NewJobID,
+		&entry.APIKeyID,
 	)
 	if err != nil {
 		return nil, err
