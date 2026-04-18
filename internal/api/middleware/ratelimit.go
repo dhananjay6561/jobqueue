@@ -4,6 +4,8 @@
 package middleware
 
 import (
+	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"sync"
@@ -93,7 +95,19 @@ func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 			bucketKey = "ip:" + ip
 		}
 
-		if !rl.getLimiter(bucketKey).Allow() {
+		limiter := rl.getLimiter(bucketKey)
+		reservation := limiter.Reserve()
+
+		// Tokens remaining after this request (clamped to [0, burst]).
+		remaining := int(math.Max(0, float64(rl.burst)-float64(rl.burst)*reservation.Delay().Seconds()*float64(rl.rps)))
+		resetIn := int(math.Ceil(reservation.Delay().Seconds()))
+
+		w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rl.burst))
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetIn))
+
+		if !reservation.OK() || reservation.Delay() > 0 {
+			reservation.Cancel()
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, `{"error":"rate limit exceeded","data":null}`, http.StatusTooManyRequests)
 			return
