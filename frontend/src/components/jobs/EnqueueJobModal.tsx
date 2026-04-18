@@ -18,6 +18,8 @@ interface FormState {
   maxAttempts: number
   queueName: QueueName
   payloadError: string
+  scheduledAt: string
+  ttlSeconds: string
 }
 
 export function EnqueueJobModal({ isOpen, onClose }: EnqueueJobModalProps) {
@@ -30,6 +32,8 @@ export function EnqueueJobModal({ isOpen, onClose }: EnqueueJobModalProps) {
     maxAttempts: 3,
     queueName: 'default',
     payloadError: '',
+    scheduledAt: '',
+    ttlSeconds: '',
   })
 
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
@@ -50,16 +54,17 @@ export function EnqueueJobModal({ isOpen, onClose }: EnqueueJobModalProps) {
     const jobType = form.type === '__custom__' ? form.customType.trim() : form.type
     if (!jobType) return
 
-    enqueue.mutate(
-      {
-        type: jobType,
-        payload: JSON.parse(form.payload) as Record<string, unknown>,
-        priority: form.priority,
-        max_attempts: form.maxAttempts,
-        queue_name: form.queueName,
-      },
-      { onSuccess: onClose },
-    )
+    const req: Parameters<typeof enqueue.mutate>[0] = {
+      type: jobType,
+      payload: JSON.parse(form.payload) as Record<string, unknown>,
+      priority: form.priority,
+      max_attempts: form.maxAttempts,
+      queue_name: form.queueName,
+    }
+    if (form.scheduledAt) req.scheduled_at = new Date(form.scheduledAt).toISOString()
+    if (form.ttlSeconds) (req as unknown as Record<string, unknown>).ttl_seconds = parseInt(form.ttlSeconds, 10)
+
+    enqueue.mutate(req, { onSuccess: onClose })
   }
 
   const labelClass = 'block text-[11px] text-[#6b6b8a] uppercase tracking-widest mb-1.5 font-mono'
@@ -156,6 +161,32 @@ export function EnqueueJobModal({ isOpen, onClose }: EnqueueJobModalProps) {
             value={form.maxAttempts}
             onChange={(e) => update({ maxAttempts: Number(e.target.value) })}
           />
+        </div>
+
+        {/* Scheduling */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass} htmlFor="scheduled-at">Schedule for (optional)</label>
+            <input
+              id="scheduled-at"
+              type="datetime-local"
+              className={inputClass}
+              value={form.scheduledAt}
+              onChange={(e) => update({ scheduledAt: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor="ttl-seconds">TTL seconds (optional)</label>
+            <input
+              id="ttl-seconds"
+              type="number"
+              min={0}
+              placeholder="0 = no expiry"
+              className={inputClass}
+              value={form.ttlSeconds}
+              onChange={(e) => update({ ttlSeconds: e.target.value })}
+            />
+          </div>
         </div>
 
         {/* Payload */}
