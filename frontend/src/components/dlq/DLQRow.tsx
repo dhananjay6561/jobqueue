@@ -37,13 +37,13 @@ export function DLQRow({ entry, isSelected, onToggleSelect }: DLQRowProps) {
           <span className="text-xs text-[#e2e2f0] font-mono">{entry.type}</span>
         </td>
         <td className="px-4 py-3">
-          <span className="text-xs text-red-400 font-mono tabular-nums">{entry.attempts}</span>
+          <span className="text-xs text-red-400 font-mono tabular-nums">{entry.total_attempts}</span>
         </td>
         <td className="px-4 py-3 max-w-[240px]">
-          <span className="text-xs text-[#6b6b8a] font-mono truncate block">{entry.last_error}</span>
+          <span className="text-xs text-[#6b6b8a] font-mono truncate block">{entry.last_error ?? '—'}</span>
         </td>
         <td className="px-4 py-3">
-          <span className="text-xs text-[#6b6b8a] font-mono">{formatRelativeTime(entry.failed_at)}</span>
+          <span className="text-xs text-[#6b6b8a] font-mono">{formatRelativeTime(entry.died_at)}</span>
         </td>
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
           <Button
@@ -83,7 +83,7 @@ export function DLQRow({ entry, isSelected, onToggleSelect }: DLQRowProps) {
                 <div>
                   <p className="text-[10px] text-[#6b6b8a] uppercase tracking-widest mb-2 font-mono">Full Error</p>
                   <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
-                    <p className="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">{entry.last_error}</p>
+                    <p className="text-xs text-red-300 font-mono whitespace-pre-wrap break-all">{entry.last_error ?? '—'}</p>
                   </div>
                 </div>
                 <div>
@@ -96,8 +96,8 @@ export function DLQRow({ entry, isSelected, onToggleSelect }: DLQRowProps) {
                 </div>
               </div>
               <div className="mt-3 flex gap-4 text-[11px] text-[#6b6b8a] font-mono">
-                <span>Failed: {formatDateTime(entry.failed_at)}</span>
-                <span>Original ID: {truncateId(entry.original_job_id)}</span>
+                <span>Died at: {formatDateTime(entry.died_at)}</span>
+                <span>Created: {formatDateTime(entry.original_created_at)}</span>
               </div>
             </td>
           </motion.tr>
