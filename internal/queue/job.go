@@ -91,6 +91,10 @@ type Job struct {
 	// Result is an optional JSON value stored by the handler on success.
 	// Consumers can fetch it via GET /api/v1/jobs/:id/result.
 	Result json.RawMessage `json:"result,omitempty"`
+
+	// APIKeyID is the UUID of the API key that created this job.
+	// Nil for jobs created without a DB-backed API key (open/static auth).
+	APIKeyID *uuid.UUID `json:"api_key_id,omitempty"`
 }
 
 // DLQEntry represents a job that has been permanently failed and moved to the
@@ -125,6 +129,9 @@ type DLQEntry struct {
 
 	// NewJobID is the uuid of the new job created when this entry was requeued.
 	NewJobID *uuid.UUID `json:"new_job_id,omitempty"`
+
+	// APIKeyID is the UUID of the API key that originally created this job.
+	APIKeyID *uuid.UUID `json:"api_key_id,omitempty"`
 }
 
 // WorkerInfo is a snapshot of a worker's state at a point in time.
