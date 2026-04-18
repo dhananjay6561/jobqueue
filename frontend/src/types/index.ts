@@ -93,13 +93,16 @@ export interface QueueDepthPoint {
 
 export interface DLQEntry {
   id: string
-  original_job_id: string
   type: string
   payload: Record<string, unknown>
-  attempts: number
-  last_error: string
-  failed_at: string
-  created_at: string
+  priority: number
+  queue_name: string
+  max_attempts: number
+  total_attempts: number
+  last_error: string | null
+  died_at: string
+  original_created_at: string
+  requeued: boolean
 }
 
 // ─── API Response Wrapper ─────────────────────────────────────────────────────
