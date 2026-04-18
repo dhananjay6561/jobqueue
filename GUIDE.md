@@ -2,43 +2,48 @@
 
 ## What is this?
 
-When you build a web app, some tasks are too slow or too risky to run while the user is waiting — sending emails, resizing images, generating reports, calling slow third-party APIs. You don't want the user's HTTP request to hang for 10 seconds while all that happens.
+When you build a web app, some tasks are too slow or too risky to run while the user is waiting — sending emails, resizing images, generating reports, calling slow third-party APIs. You don't want the user's HTTP request to hang while all that happens.
 
-A **job queue** solves this. Instead of doing the work immediately, your app drops a "job" (a small message describing the work to be done) into a queue and instantly returns a response to the user. Meanwhile, a pool of background workers picks up those jobs one by one and actually executes them — independently, reliably, and concurrently.
+A **job queue** solves this. Instead of doing the work immediately, your app drops a "job" into a queue and instantly returns a response. Background workers pick those jobs up and execute them independently, reliably, and concurrently.
 
-This project is a **production-grade distributed job queue** built in Go. It uses:
+This project is a **production-grade distributed job queue** built in Go:
 
-- **PostgreSQL** as the source of truth — every job and its full history is stored here
-- **Redis** as the broker — workers atomically pull job IDs from sorted sets, ensuring no two workers ever process the same job
-- **5 concurrent Go workers** processing jobs in parallel
-- **WebSocket** to push real-time events to the dashboard the moment anything happens
-- **React dashboard** (what you're looking at) to observe and control everything
+- **PostgreSQL** — source of truth, full audit history of every job
+- **Redis** — broker; workers atomically pull job IDs from sorted sets (no two workers ever claim the same job)
+- **Worker pool** — configurable number of Go goroutines processing jobs in parallel
+- **WebSocket** — push real-time events to the dashboard the instant anything happens
+- **Multi-tenant** — every API key sees only its own jobs; one deployment serves many teams
+- **React dashboard** — observe and control everything without writing curl commands
 
 ---
 
 ## The Flow — What Actually Happens
 
 ```
-You (or your app)                    JobQueue System
-─────────────────                    ───────────────────────────────────────────
+Your app                         JobQueue
+──────────────────               ────────────────────────────────────────────
 
-POST /api/v1/jobs  ──────────────►  Saved to PostgreSQL (status: pending)
-                                     Job ID pushed into Redis sorted set
-                                     WebSocket broadcasts: job.enqueued
-                   ◄──────────────  Returns job ID immediately
+POST /api/v1/jobs ─────────────► Saved to PostgreSQL  (status: pending)
+                                  Job ID pushed into Redis sorted set
+                                  WebSocket broadcasts: job.enqueued
+                  ◄───────────── Returns job ID immediately
 
-                                     Worker picks up job from Redis
-                                     Job marked running in PostgreSQL
-                                     WebSocket broadcasts: job.started
+                                  Worker dequeues the job ID from Redis
+                                  Job marked running in PostgreSQL
+                                  WebSocket broadcasts: job.started
 
-                                     Handler executes the work
+                                  Handler function executes the work
 
-                                     ┌── success ──► job.completed
-                                     │
-                                     └── failure ──► retried with backoff
-                                                     (up to max_attempts)
-                                                     ──► if exhausted: job.dead
-                                                         moved to Dead Letter Queue
+                                  ┌── success ──► status = completed
+                                  │               result stored in DB
+                                  │               job.completed broadcast
+                                  │
+                                  └── failure ──► retried with backoff
+                                                  (up to max_attempts times)
+                                                  ──► if exhausted:
+                                                      status = dead
+                                                      moved to DLQ
+                                                      job.dead broadcast
 ```
 
 ---
@@ -49,96 +54,123 @@ POST /api/v1/jobs  ──────────────►  Saved to Postg
 
 Open **http://localhost:8080**
 
-This is your mission control. Here's what you're looking at:
+**Stats Bar** — live counters: Total, Pending, Running, Completed, Failed, Dead, Workers, JPM (jobs/minute).
 
-**Stats Bar (top row)** — live counters for:
-- `Total` — every job ever submitted
-- `Pending` — waiting in queue, not yet picked up
-- `Running` — actively being processed by a worker right now
-- `Completed` — finished successfully
-- `Failed` — failed at least once but still has retry attempts left
-- `Dead` — exhausted all retries, sitting in the Dead Letter Queue
-- `Workers` — how many workers are currently active
-- `JPM` — jobs processed per minute (throughput)
+**Throughput Chart** — rolling chart of completed vs failed jobs. Updates every 5 seconds.
 
-**Throughput Chart** — a live rolling chart showing completed vs failed jobs over time. Each data point updates every 5 seconds. A healthy system shows a green-dominant chart.
+**Queue Depth Gauge** — jobs currently waiting in Redis. If this climbs faster than it drains, add more workers.
 
-**Queue Depth Gauge** — shows how many jobs are currently waiting in Redis to be picked up. If this number keeps climbing, your workers can't keep up with the incoming rate.
+**Live Events Feed** — real-time terminal streaming over WebSocket. Every job lifecycle event appears here instantly.
 
-**Live Events Feed** — a real-time terminal-style feed streamed over WebSocket. Every time something happens in the system, a line appears here instantly:
-- `[job.enqueued]` — a new job was submitted
-- `[job.started]` — a worker claimed a job
-- `[job.completed]` — a job finished successfully
-- `[job.failed]` — a job failed (will be retried)
-- `[job.dead]` — a job died after exhausting all retries
-- `[worker.heartbeat]` — workers checking in every 10s to say they're alive
-
-**Recent Jobs table** — the last few jobs, clickable to see full details.
+**Recent Jobs table** — last few jobs, clickable for full details.
 
 ---
 
 ### Jobs Page
 
-Click **Jobs** in the sidebar.
+**Enqueue a job** — click `+ Enqueue Job`. Fill in:
+- **Job Type** — handler name (`send_email`, `resize_image`, etc.)
+- **Queue** — `default`, `critical`, or `bulk`
+- **Priority** — 1–10 slider; higher jumps the queue
+- **Max Attempts** — retries before DLQ
+- **Schedule for** — optional datetime for future execution
+- **TTL seconds** — optional auto-expire after N seconds in a terminal state
+- **Payload** — JSON passed to the handler
 
-This is the full job registry. Every job ever submitted lives here.
+**Batch enqueue** — click `Batch`. Paste a JSON array of job objects; all enqueued atomically in one transaction.
 
-**Enqueue a Job** — click the `+ Enqueue Job` button (top right). Fill in:
-- **Job Type** — the kind of work (e.g. `send_email`, `noop`, `send_notification`). Workers have registered handlers for these types.
-- **Queue** — `default`, `critical`, or `bulk`. Critical jobs are always processed before default, which are processed before bulk (priority encoding via Redis score).
-- **Priority** — slider from 1–10. Higher priority jobs jump ahead of lower ones within the same queue.
-- **Max Attempts** — how many times the system should retry before giving up and moving to DLQ.
-- **Payload** — a JSON object passed to the handler. Put anything your handler needs here.
+**Filter bar** — filter by status, type, or queue.
 
-**Filter bar** — filter by status (Pending / Running / Completed / Failed / Dead / Cancelled), by job type, or by queue.
-
-**Click any row** — opens a side drawer with the full job detail: ID, status history, payload, error message if failed, timestamps, attempt count.
+**Click any row** — side drawer with full detail: ID, payload, error, timestamps, attempt count.
 
 ---
 
 ### Workers Page
 
-Click **Workers** in the sidebar.
-
-Shows all 5 worker goroutines that are running inside the Go process. For each worker you can see:
-
-- **Status** — `active` (processing a job right now), `idle` (waiting for work)
-- **Current Job** — the job type it's currently working on
-- **Jobs Processed** — how many jobs this worker has completed since startup
-- **Last Seen** — the last heartbeat timestamp. If this goes stale (more than ~30s), the worker has likely crashed.
-
-Workers are started automatically when the server boots. You don't start or stop them manually.
+All worker goroutines running inside the Go process:
+- **Status** — `active` (processing right now) or `idle`
+- **Current Job** — job type currently being processed
+- **Jobs Processed** — cumulative completions since startup
+- **Last Seen** — heartbeat timestamp; stale means the worker may have crashed
 
 ---
 
-### Dead Letter Queue (DLQ)
+### Dead Letter Queue
 
-Click **Dead Letter Queue** in the sidebar.
+Jobs that exhausted all retry attempts land here. Nothing is ever auto-deleted (unless you set `expires_at`).
 
-When a job fails and has no retry attempts left, it lands here. Nothing is ever auto-deleted — this is your audit trail for everything that went wrong.
-
-For each DLQ entry you can see:
-- The original job type and payload
-- How many attempts were made
-- The last error message that caused the final failure
-
-**Requeue button** — click it to create a brand new job from this DLQ entry, with fresh retry counters. The new job goes back into the queue and workers will pick it up again.
+**Requeue** — creates a fresh job with reset counters, links back to the DLQ entry. The entry is marked `requeued` so you know it was actioned.
 
 ---
 
-## Try It Now — Hands-On Demo
+### Cron Schedules
 
-Make sure the server is running (`./run.sh`), then follow these steps.
+Recurring jobs driven by 5-field cron expressions. No external cron daemon needed.
 
-### Step 1 — Watch the Live Feed wake up
+- **Enable/disable toggle** — pause a schedule without deleting it
+- **Create** — fill in name, job type, and cron expression
+- **Delete** — removes the schedule; in-flight jobs are unaffected
 
-Go to the **Dashboard**. The Live Events feed should show `[worker.heartbeat]` events arriving every 10 seconds — one per worker. This confirms all 5 workers are alive and connected.
+---
+
+## API Key Setup
+
+By default the server runs in open mode (no auth). To enable multi-tenant access with per-key isolation:
+
+```bash
+# 1. Set a database-backed key store (already on when DATABASE_DSN is set)
+# 2. Create your first key via the API
+curl -X POST http://localhost:8080/api/v1/keys \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "my-service", "tier": "free"}'
+
+# Response includes the raw key (shown once only — save it):
+# { "data": { "key": "sk_live_...", "api_key": { "id": "...", "tier": "free", ... } } }
+
+# 3. Use the key on every request
+curl -H 'X-API-Key: sk_live_...' http://localhost:8080/api/v1/jobs
+
+# 4. Check usage
+curl -H 'X-API-Key: sk_live_...' http://localhost:8080/api/v1/usage
+```
+
+**Tiers:**
+
+| Tier | Monthly job limit |
+|---|---|
+| `free` | 1,000 |
+| `pro` | 100,000 |
+| `business` | Unlimited |
+
+When the limit is hit, `POST /api/v1/jobs` returns `429 Too Many Requests`.
+
+**Admin key** — set `ADMIN_KEY` to a separate secret. That key bypasses per-key scoping and sees all jobs globally. Useful for operators:
+
+```bash
+ADMIN_KEY=ops-secret
+
+curl -H 'X-API-Key: ops-secret' http://localhost:8080/api/v1/stats
+# → global stats across all API keys
+```
+
+**Rate limit headers** — every response includes:
+```
+X-RateLimit-Limit: 20
+X-RateLimit-Remaining: 18
+X-RateLimit-Reset: 0
+```
+
+---
+
+## Hands-On Demo
+
+### Step 1 — Confirm workers are alive
+
+Open the dashboard. The Live Events feed shows `[worker.heartbeat]` events every 10 seconds — one per worker.
 
 ### Step 2 — Enqueue your first job
 
-Go to **Jobs → Enqueue Job**.
-
-Fill in:
+Go to **Jobs → Enqueue Job**:
 ```
 Type:         noop
 Queue:        default
@@ -147,119 +179,168 @@ Max Attempts: 3
 Payload:      { "hello": "world" }
 ```
 
-Click **Enqueue Job**.
-
-Switch immediately to the **Dashboard**. In the Live Events feed you'll see three lines appear within milliseconds:
-
+Switch to the Dashboard. Three events appear in under a second:
 ```
-[job.enqueued]   noop job abc123 enqueued on default (priority 5)
-[job.started]    worker-2 picked up job abc123 (noop)
-[job.completed]  job abc123 (noop) completed in 1ms
+[job.enqueued]   noop job abc123 enqueued
+[job.started]    worker-2 claimed abc123
+[job.completed]  abc123 completed in 1ms
 ```
 
-The `noop` handler does nothing and returns immediately, so it completes in under a millisecond. The Stats Bar `Completed` counter ticks up by 1.
+### Step 3 — Watch priority in action
 
-### Step 3 — Enqueue a higher-priority job
-
-Go back to **Jobs → Enqueue Job**, enqueue 5 jobs with priority 2, then quickly enqueue one more with priority 9.
-
-Go to **Jobs** and sort by status. You'll see the priority-9 job completed before the priority-2 jobs — Redis sorted-set scoring ensures higher priority jobs are always dequeued first.
+Enqueue 5 jobs at priority 2, then immediately one at priority 9. The priority-9 job completes first — Redis score encoding guarantees it.
 
 ### Step 4 — Watch a job fail and retry
 
-The `send_email` job type has a handler registered but your server doesn't have a real email service wired up, so it will fail.
-
-Go to **Jobs → Enqueue Job**:
+Enqueue a `send_email` job with `Max Attempts: 3`. The Live Feed shows:
 ```
-Type:         send_email
-Queue:        default
-Priority:     5
-Max Attempts: 3
-Payload:      { "to": "test@example.com", "subject": "Hello" }
+[job.enqueued] → [job.started] → [job.failed] (attempt 1/3, backoff 5s)
+             → [job.started] → [job.failed] (attempt 2/3, backoff 10s)
+             → [job.started] → [job.failed] (attempt 3/3, backoff 20s)
+             → [job.dead]    moved to DLQ
 ```
 
-Watch the Live Feed:
+### Step 5 — Rescue from the DLQ
+
+Go to **Dead Letter Queue**, find the entry, click **Requeue**. A fresh job is created and the cycle begins again.
+
+### Step 6 — Schedule a job for the future
+
+In the enqueue modal, set **Schedule for** to a time a few minutes from now. The job sits in `pending` until then — the Redis delayed promoter moves it to the active queue at the right moment.
+
+### Step 7 — Batch enqueue
+
+Click **Batch** on the Jobs page, paste:
+```json
+[
+  { "type": "send_email", "payload": { "to": "a@example.com" } },
+  { "type": "resize_image", "payload": { "url": "https://..." } },
+  { "type": "generate_report", "payload": { "report_id": 99 } }
+]
 ```
-[job.enqueued]   send_email job enqueued
-[job.started]    worker picked it up
-[job.failed]     attempt 1/3 — error: ...
-[job.started]    worker retried (after 5s backoff)
-[job.failed]     attempt 2/3 — error: ...
-[job.started]    worker retried (after 10s backoff)
-[job.failed]     attempt 3/3 — error: ...
-[job.dead]       send_email moved to Dead Letter Queue
+All three are inserted in a single transaction and immediately available to workers.
+
+### Step 8 — Tag jobs and filter
+
+Enqueue with tags:
+```bash
+curl -X POST http://localhost:8080/api/v1/jobs \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"send_email","payload":{},"tags":{"user_id":"42","region":"eu"}}'
+
+# Filter later
+curl "http://localhost:8080/api/v1/jobs?tags=region:eu"
 ```
-
-Backoff doubles each attempt: 5s → 10s → 20s. After the 3rd failure the job is dead.
-
-### Step 5 — Rescue from the Dead Letter Queue
-
-Go to **Dead Letter Queue**. You'll see the `send_email` job sitting there with its last error message.
-
-Click **Requeue**. A fresh job is created and you'll see `[job.enqueued]` appear in the Live Feed. The process starts again.
-
-### Step 6 — Cancel a pending job
-
-Enqueue a job with `Max Attempts: 1` and then immediately go to **Jobs** and click on it. In the detail drawer, hit **Cancel**. The status changes to `cancelled` and no worker will process it.
 
 ---
+
+## SDK Quick Start
+
+### Go
+
+```go
+import jobqueue "github.com/dhananjay6561/jobqueue/sdk/go"
+
+client := jobqueue.New("http://localhost:8080", jobqueue.WithAPIKey("sk_..."))
+
+// Enqueue
+job, err := client.Enqueue(ctx, jobqueue.EnqueueRequest{
+    Type:    "generate_report",
+    Payload: map[string]any{"report_id": 42},
+    Priority: 7,
+})
+
+// Poll for completion and fetch result
+for job.Status != "completed" && job.Status != "dead" {
+    time.Sleep(500 * time.Millisecond)
+    job, _ = client.GetJob(ctx, job.ID.String())
+}
+result, _ := client.GetJobResult(ctx, job.ID.String())
+
+// Cron
+_, err = client.CreateCron(ctx, "/cron schedule", ...)
+```
+
+### Node.js
+
+```js
+import { JobQueueClient } from '@jobqueue/client'
+
+const jq = new JobQueueClient('http://localhost:8080', { apiKey: 'sk_...' })
+
+// Single job
+const job = await jq.enqueue({ type: 'send_email', payload: { to: 'x@example.com' } })
+
+// Batch
+const jobs = await jq.enqueueBatch([
+  { type: 'resize_image', payload: { url: '...' } },
+  { type: 'send_email',   payload: { to: '...'  } },
+])
+
+// Cursor-paginated list
+let cursor = ''
+do {
+  const page = await jq.listJobsCursor({ status: 'completed', cursor, limit: 50 })
+  console.log(page.items)
+  cursor = page.next_cursor
+} while (page.has_more)
+
+// Cron
+await jq.createCron({ name: 'daily', job_type: 'cleanup', cron_expression: '0 2 * * *' })
+await jq.patchCron(id, { enabled: false })
+```
+
+### Python
+
+```python
+from jobqueue_client import JobQueueClient
+
+with JobQueueClient("http://localhost:8080", api_key="sk_...") as jq:
+    job = jq.enqueue(type="send_email", payload={"to": "user@example.com"}, ttl_seconds=3600)
+    batch = jq.enqueue_batch([
+        {"type": "resize_image", "payload": {"url": "..."}},
+        {"type": "send_email",   "payload": {"to": "..."}},
+    ])
+    stats = jq.get_stats()
+    jq.create_cron(name="daily", job_type="cleanup", cron_expression="0 2 * * *")
+
+# Async
+import asyncio
+from jobqueue_client import AsyncJobQueueClient
+
+async def main():
+    async with AsyncJobQueueClient("http://localhost:8080", api_key="sk_...") as jq:
+        job = await jq.enqueue(type="generate_report", payload={"id": 1})
+
+asyncio.run(main())
+```
 
 ---
 
 ## Advanced Features
 
-### API Key Authentication
+### Job TTL and Auto-Cleanup
 
-Protect all `/api/v1/*` routes by setting the `API_KEY` environment variable. Once set, every API request must include the key.
-
-```bash
-# Set in .env or docker-compose environment
-API_KEY=my-super-secret-key
-
-# Include in every request
-curl -H "X-API-Key: my-super-secret-key" http://localhost:8080/api/v1/stats
-
-# Or as a query param
-curl "http://localhost:8080/api/v1/jobs?api_key=my-super-secret-key"
-```
-
-Leave `API_KEY` empty (the default) for open access in dev/demo mode. The dashboard, `/health`, and `/metrics` are always public.
-
----
-
-### Job Result Storage
-
-Handlers can return a result alongside the nil error. The result is stored as JSON in PostgreSQL and retrievable by callers — enabling async request/response patterns.
+Set a TTL on individual jobs so they auto-expire after a terminal state:
 
 ```bash
-# Enqueue a job
+# Job expires 1 hour after it completes/fails
 curl -X POST http://localhost:8080/api/v1/jobs \
-  -H 'Content-Type: application/json' \
-  -d '{"type":"generate_report","payload":{"report_id":42},"priority":5}'
+  -d '{"type":"noop","payload":{},"ttl_seconds":3600}'
 
-# Poll until completed, then fetch the result
-curl http://localhost:8080/api/v1/jobs/<job-id>/result
-# → {"job_id":"...","status":"ok","job_type":"generate_report","processed":true}
+# Bulk-delete all terminal jobs created before a timestamp
+curl -X DELETE "http://localhost:8080/api/v1/jobs?before=2026-01-01T00:00:00Z"
 ```
 
-Returns `204 No Content` if the job exists but stored no result. Returns `404` if the job doesn't exist.
-
-**In your own handler** (when using the server directly):
-```go
-workerPool.Register("generate_report", func(ctx context.Context, job *queue.Job) (any, error) {
-    report := buildReport(job.Payload)
-    return map[string]any{"report_url": report.URL, "rows": report.RowCount}, nil
-})
-```
+The server also runs a background goroutine that purges expired jobs every hour automatically — no external cron needed.
 
 ---
 
 ### Webhooks
 
-Register HTTP endpoints to receive real-time POSTs whenever job events fire. Each delivery is signed with HMAC-SHA256 so you can verify it came from your server.
+Receive signed HTTP POSTs on job lifecycle events:
 
 ```bash
-# Register a webhook
 curl -X POST http://localhost:8080/api/v1/webhooks \
   -H 'Content-Type: application/json' \
   -d '{
@@ -267,31 +348,14 @@ curl -X POST http://localhost:8080/api/v1/webhooks \
     "secret": "my-signing-secret",
     "events": ["job.completed", "job.failed", "job.dead"]
   }'
-
-# List all webhooks
-curl http://localhost:8080/api/v1/webhooks
-
-# Delete a webhook
-curl -X DELETE http://localhost:8080/api/v1/webhooks/<webhook-id>
 ```
 
-**Payload your endpoint receives:**
-```json
-{
-  "event": "job.completed",
-  "job_id": "abc123",
-  "job_type": "send_email",
-  "timestamp": 1713419400000
-}
-```
-
-**Verifying the signature** (Node.js example):
+**Verify the signature** (Node.js):
 ```js
-const crypto = require('crypto');
 const sig = crypto.createHmac('sha256', 'my-signing-secret')
-  .update(rawBody).digest('hex');
+  .update(rawBody).digest('hex')
 if (`sha256=${sig}` !== req.headers['x-webhook-signature']) {
-  return res.status(401).send('invalid signature');
+  return res.status(401).send('invalid signature')
 }
 ```
 
@@ -301,18 +365,19 @@ Supported events: `job.enqueued`, `job.started`, `job.completed`, `job.failed`, 
 
 ### Prometheus Metrics
 
-`GET /metrics` returns Prometheus text format — plug it straight into any Prometheus scrape config.
-
 ```bash
 curl http://localhost:8080/metrics | grep "^jobqueue_"
-# jobqueue_jobs_enqueued_total 42
-# jobqueue_jobs_completed_total 38
-# jobqueue_jobs_failed_total 3
-# jobqueue_jobs_dead_total 1
-# jobqueue_queue_depth 4
-# jobqueue_active_workers 5
-# jobqueue_ws_clients 2
-# jobqueue_job_duration_seconds_bucket{job_type="send_email",le="0.5"} 12
+```
+
+```
+jobqueue_jobs_enqueued_total 42
+jobqueue_jobs_completed_total 38
+jobqueue_jobs_failed_total 3
+jobqueue_jobs_dead_total 1
+jobqueue_queue_depth 4
+jobqueue_active_workers 5
+jobqueue_ws_clients 2
+jobqueue_job_duration_seconds_bucket{job_type="send_email",le="0.5"} 12
 ```
 
 **Prometheus scrape config:**
@@ -324,109 +389,62 @@ scrape_configs:
     metrics_path: /metrics
 ```
 
-**Grafana dashboard** — import any Go job queue dashboard template and map to these metric names.
-
 ---
 
-### Go SDK
+### Job Result Storage
 
-Import the SDK in any Go service to enqueue jobs and interact with the API without writing raw HTTP.
+Handlers can return a value. It's stored as JSON in PostgreSQL and retrievable async:
 
 ```bash
-go get github.com/dhananjay6561/jobqueue-go
+# Enqueue
+curl -X POST http://localhost:8080/api/v1/jobs \
+  -d '{"type":"generate_report","payload":{"report_id":42}}'
+
+# Fetch result after completion
+curl http://localhost:8080/api/v1/jobs/<id>/result
+# → {"report_url":"https://...","rows":1234}
 ```
 
+Returns `204 No Content` if the job stored no result. Returns `404` if not found.
+
+**In your handler (Go):**
 ```go
-import jobqueue "github.com/dhananjay6561/jobqueue-go"
-
-client := jobqueue.New("http://localhost:8080",
-    jobqueue.WithAPIKey("my-secret-key"),
-)
-
-// Enqueue
-job, err := client.Enqueue(ctx, jobqueue.EnqueueRequest{
-    Type:    "send_email",
-    Payload: map[string]any{"to": "user@example.com"},
-    Priority: 8,
+pool.Register("generate_report", func(ctx context.Context, job *queue.Job) (any, error) {
+    report := buildReport(job.Payload)
+    return map[string]any{"report_url": report.URL, "rows": report.RowCount}, nil
 })
-
-// Poll for result
-for job.Status != "completed" && job.Status != "dead" {
-    time.Sleep(500 * time.Millisecond)
-    job, _ = client.GetJob(ctx, job.ID)
-}
-result, _ := client.GetJobResult(ctx, job.ID)
-
-// Stats, webhooks, DLQ, cron — full API coverage
-stats, _ := client.GetStats(ctx)
 ```
-
-See `sdk/go/README.md` for the full reference.
 
 ---
 
-### Cron Scheduling
+### Cursor Pagination
 
-Register recurring job schedules using standard 5-field cron expressions. The server auto-enqueues a fresh job each time the schedule fires — no external cron daemon needed.
+The standard `GET /api/v1/jobs` uses offset pagination which can skip or duplicate rows when new jobs are inserted between pages. Use the cursor endpoint for stable pagination:
 
 ```bash
-# Schedule cleanup_storage every day at 2 AM
-curl -X POST http://localhost:8080/api/v1/cron \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "daily-cleanup",
-    "job_type": "cleanup_storage",
-    "payload": {"target": "tmp"},
-    "queue_name": "bulk",
-    "priority": 3,
-    "max_attempts": 2,
-    "cron_expression": "0 2 * * *"
-  }'
+# First page
+curl "http://localhost:8080/api/v1/jobs/cursor?limit=50&status=completed"
+# → { "items": [...], "next_cursor": "eyJ...", "has_more": true }
 
-# Every 15 minutes
-curl -X POST http://localhost:8080/api/v1/cron \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "name": "sync-every-15min",
-    "job_type": "sync_data",
-    "payload": {},
-    "cron_expression": "*/15 * * * *"
-  }'
-
-# List all schedules (includes next_run_at)
-curl http://localhost:8080/api/v1/cron
-
-# Delete a schedule
-curl -X DELETE http://localhost:8080/api/v1/cron/<schedule-id>
+# Next page
+curl "http://localhost:8080/api/v1/jobs/cursor?limit=50&cursor=eyJ..."
 ```
 
-**Cron expression reference:**
-
-| Expression | Meaning |
-|---|---|
-| `* * * * *` | Every minute |
-| `0 * * * *` | Every hour at :00 |
-| `0 9 * * *` | Daily at 09:00 |
-| `0 9 * * 1` | Every Monday at 09:00 |
-| `*/15 * * * *` | Every 15 minutes |
-| `0 2 1 * *` | 1st of every month at 02:00 |
-
-Fields: `minute hour day-of-month month day-of-week`. Supports `*`, `*/step`, `a-b` ranges, and `a,b,c` lists.
-
-The promoter checks for due schedules every 30 seconds. After each dispatch, `last_run_at` and `next_run_at` are updated so you always know when a job last ran and when it runs next.
+The cursor encodes `(created_at, id)` so pages are fully stable even as new jobs arrive.
 
 ---
 
-## Why this matters
+## Why This Matters
 
-This is the same pattern used by:
-- **Shopify** — processes millions of background jobs per day (order confirmations, inventory updates, webhook deliveries)
-- **GitHub** — runs CI job dispatching, notification emails, and webhook fan-out
+Same pattern used at scale by:
+- **Shopify** — millions of background jobs/day (order confirmations, inventory, webhooks)
+- **GitHub** — CI dispatch, notification emails, webhook fan-out
 - **Stripe** — async payment processing, fraud checks, email receipts
 
-The key ideas this system demonstrates:
-- **Atomic dequeue via Redis ZPOPMIN** — no two workers ever claim the same job
+Core ideas this demonstrates:
+- **Atomic dequeue via ZPOPMIN** — no two workers ever claim the same job
 - **PostgreSQL as audit log** — Redis can be flushed; Postgres never loses history
-- **Exponential backoff** — transient failures (network hiccup, rate limit) don't permanently kill jobs
-- **DLQ as safety net** — nothing silently disappears; everything that fails is visible and recoverable
+- **Exponential backoff** — transient failures don't permanently kill jobs
+- **DLQ as safety net** — nothing silently disappears; everything recoverable
+- **Multi-tenant by default** — one deployment, many isolated teams
 - **Graceful shutdown** — in-flight jobs always finish before the process exits
