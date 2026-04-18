@@ -16,13 +16,15 @@ type apiKeyStorer interface {
 //   - If no store is provided (legacy mode): falls back to static key check.
 //   - If store is provided: validates the key exists in the DB, checks it's
 //     enabled, and rejects with 429 if the monthly limit is reached.
+//   - If adminKey is non-empty and the supplied key matches it, the request is
+//     marked as admin (bypasses per-key scoping) and passes through.
 //
 // The resolved *queue.APIKey is stored in the request context under apiKeyCtxKey
 // so downstream handlers (e.g. the enqueue handler) can call IncrementUsage.
-func APIKeyAuth(staticKey string, store apiKeyStorer) func(http.Handler) http.Handler {
+func APIKeyAuth(staticKey, adminKey string, store apiKeyStorer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		// No auth configured at all — pass through.
-		if staticKey == "" && store == nil {
+		if staticKey == "" && adminKey == "" && store == nil {
 			return next
 		}
 
@@ -32,26 +34,31 @@ func APIKeyAuth(staticKey string, store apiKeyStorer) func(http.Handler) http.Ha
 				supplied = r.URL.Query().Get("api_key")
 			}
 
+			// Admin key check — bypasses DB lookup and scoping.
+			if adminKey != "" && supplied == adminKey {
+				ctx := context.WithValue(r.Context(), adminCtxKey{}, true)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			// DB-backed key validation.
 			if store != nil && supplied != "" {
 				key, err := store.GetAPIKeyByHash(r.Context(), supplied)
 				if err == nil && key.Enabled {
-					// Key found and enabled — attach to context.
 					ctx := context.WithValue(r.Context(), apiKeyCtxKey{}, key)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
 			}
 
-			// Fall back to static key comparison (used when API_KEY env is set
-			// but DB key management hasn't been set up yet).
+			// Fall back to static key comparison.
 			if staticKey != "" && supplied == staticKey {
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			// No valid key supplied.
-			if staticKey != "" || store != nil {
+			if staticKey != "" || adminKey != "" || store != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_, _ = w.Write([]byte(`{"error":"invalid or missing API key","data":null}`))
@@ -64,12 +71,20 @@ func APIKeyAuth(staticKey string, store apiKeyStorer) func(http.Handler) http.Ha
 }
 
 type apiKeyCtxKey struct{}
+type adminCtxKey struct{}
 
 // APIKeyFromContext retrieves the resolved APIKey from the request context.
 // Returns nil if no DB-backed key was resolved (static key or no auth).
 func APIKeyFromContext(ctx context.Context) *queue.APIKey {
 	k, _ := ctx.Value(apiKeyCtxKey{}).(*queue.APIKey)
 	return k
+}
+
+// IsAdminFromContext returns true when the request was authenticated with the
+// admin key and should bypass per-key data scoping.
+func IsAdminFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(adminCtxKey{}).(bool)
+	return v
 }
 
 // EnforceUsageLimit is a per-route middleware that increments the usage counter

@@ -228,8 +228,10 @@ func (h *JobHandler) ListJobsCursor(w http.ResponseWriter, r *http.Request) {
 		Cursor:    queryParamString(r, "cursor"),
 		Limit:     queryParamInt(r, "limit", 20),
 	}
-	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
-		filter.APIKeyID = &key.ID
+	if !middleware.IsAdminFromContext(r.Context()) {
+		if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+			filter.APIKeyID = &key.ID
+		}
 	}
 
 	page, err := h.store.ListJobsCursor(r.Context(), filter)
@@ -262,8 +264,10 @@ func (h *JobHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		Limit:     queryParamInt(r, "limit", 20),
 		Offset:    queryParamInt(r, "offset", 0),
 	}
-	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
-		filter.APIKeyID = &key.ID
+	if !middleware.IsAdminFromContext(r.Context()) {
+		if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+			filter.APIKeyID = &key.ID
+		}
 	}
 
 	page, err := h.store.ListJobs(r.Context(), filter)
@@ -453,8 +457,10 @@ func (h *JobHandler) ListDLQ(w http.ResponseWriter, r *http.Request) {
 		Limit:           queryParamInt(r, "limit", 20),
 		Offset:          queryParamInt(r, "offset", 0),
 	}
-	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
-		filter.APIKeyID = &key.ID
+	if !middleware.IsAdminFromContext(r.Context()) {
+		if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+			filter.APIKeyID = &key.ID
+		}
 	}
 
 	page, err := h.store.ListDLQ(r.Context(), filter)
@@ -557,8 +563,10 @@ func (h *JobHandler) PurgeJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var apiKeyID *uuid.UUID
-	if key := middleware.APIKeyFromContext(r.Context()); key != nil {
-		apiKeyID = &key.ID
+	if !middleware.IsAdminFromContext(r.Context()) {
+		if key := middleware.APIKeyFromContext(r.Context()); key != nil {
+			apiKeyID = &key.ID
+		}
 	}
 
 	n, err := h.store.PurgeJobsBefore(r.Context(), before, apiKeyID)
@@ -595,8 +603,11 @@ func parseUUID(r *http.Request, param string) (uuid.UUID, error) {
 }
 
 // jobBelongsToKey returns false when a DB-backed API key is present in context
-// but the job was created by a different key. Open/static auth always returns true.
+// but the job was created by a different key. Admin and open/static auth always return true.
 func jobBelongsToKey(r *http.Request, job *queue.Job) bool {
+	if middleware.IsAdminFromContext(r.Context()) {
+		return true
+	}
 	key := middleware.APIKeyFromContext(r.Context())
 	if key == nil {
 		return true // open or static auth — no scoping

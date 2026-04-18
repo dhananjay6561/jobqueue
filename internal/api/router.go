@@ -31,6 +31,7 @@ type RouterConfig struct {
 	RateLimitBurst     int
 	StaticDir          string // path to built frontend; empty = no UI served
 	APIKey             string // when non-empty, /api/v1/* requires X-API-Key
+	AdminKey           string // when non-empty, requests with this key bypass scoping
 }
 
 // NewRouter constructs and returns the application's HTTP router.
@@ -73,7 +74,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// Versioned REST API — optionally gated by API key.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.Store))
+		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.AdminKey, cfg.Store))
 		// Jobs — enqueue is metered, reads are free
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs", jobHandler.EnqueueJob)
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs/batch", jobHandler.EnqueueJobBatch)
