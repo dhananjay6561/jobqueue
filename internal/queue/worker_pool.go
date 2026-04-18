@@ -16,6 +16,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -30,7 +31,9 @@ import (
 
 // Handler is a function that processes a single job. Returning a non-nil error
 // marks the job as failed; a nil return marks it as completed.
-type Handler func(ctx context.Context, job *Job) error
+// The handler may optionally return a JSON-serialisable result as the second
+// value — pass nil to store no result.
+type Handler func(ctx context.Context, job *Job) (result any, err error)
 
 // EventPublisher is called by the pool on every significant state change so
 // connected WebSocket clients can receive real-time updates.
@@ -44,7 +47,7 @@ type EventPublisher interface {
 type JobStore interface {
 	GetJob(ctx context.Context, id uuid.UUID) (*Job, error)
 	MarkJobStarted(ctx context.Context, id uuid.UUID, workerID string) (*Job, error)
-	MarkJobCompleted(ctx context.Context, id uuid.UUID) (*Job, error)
+	MarkJobCompleted(ctx context.Context, id uuid.UUID, result json.RawMessage) (*Job, error)
 	MarkJobFailed(ctx context.Context, id uuid.UUID, errMsg string) (*Job, error)
 	MarkJobDead(ctx context.Context, id uuid.UUID, errMsg string) error
 	InsertDLQ(ctx context.Context, job *Job) error
@@ -291,11 +294,17 @@ func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, lo
 
 	// Execute the handler with a per-job context so it can be cancelled on
 	// pool shutdown without affecting other workers.
-	handlerErr := handler(ctx, job)
+	handlerResult, handlerErr := handler(ctx, job)
 
 	if handlerErr == nil {
-		// Success path.
-		if _, err := p.store.MarkJobCompleted(ctx, id); err != nil {
+		// Success path — marshal the optional handler result.
+		var resultJSON json.RawMessage
+		if handlerResult != nil {
+			if b, merr := json.Marshal(handlerResult); merr == nil {
+				resultJSON = b
+			}
+		}
+		if _, err := p.store.MarkJobCompleted(ctx, id, resultJSON); err != nil {
 			log.Error().Err(err).Msg("failed to mark job completed")
 			return false
 		}

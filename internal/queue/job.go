@@ -87,6 +87,10 @@ type Job struct {
 
 	// ErrorMessage is the last error string returned by the handler.
 	ErrorMessage *string `json:"error_message,omitempty"`
+
+	// Result is an optional JSON value stored by the handler on success.
+	// Consumers can fetch it via GET /api/v1/jobs/:id/result.
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 // DLQEntry represents a job that has been permanently failed and moved to the

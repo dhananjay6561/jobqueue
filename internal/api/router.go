@@ -75,6 +75,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/jobs", jobHandler.EnqueueJob)
 		r.Get("/jobs", jobHandler.ListJobs)
 		r.Get("/jobs/{id}", jobHandler.GetJob)
+		r.Get("/jobs/{id}/result", jobHandler.GetJobResult)
 		r.Delete("/jobs/{id}", jobHandler.CancelJob)
 		r.Post("/jobs/{id}/retry", jobHandler.RetryJob)
 

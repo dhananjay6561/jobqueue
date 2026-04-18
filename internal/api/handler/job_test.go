@@ -89,13 +89,21 @@ func (m *mockJobStore) MarkJobStarted(_ context.Context, id uuid.UUID, workerID 
 	return job, nil
 }
 
-func (m *mockJobStore) MarkJobCompleted(_ context.Context, id uuid.UUID) (*queue.Job, error) {
+func (m *mockJobStore) MarkJobCompleted(_ context.Context, id uuid.UUID, _ json.RawMessage) (*queue.Job, error) {
 	job, ok := m.jobs[id]
 	if !ok {
 		return nil, store.ErrNotFound
 	}
 	job.Status = queue.StatusCompleted
 	return job, nil
+}
+
+func (m *mockJobStore) GetJobResult(_ context.Context, id uuid.UUID) (json.RawMessage, error) {
+	job, ok := m.jobs[id]
+	if !ok {
+		return nil, store.ErrNotFound
+	}
+	return job.Result, nil
 }
 
 func (m *mockJobStore) MarkJobFailed(_ context.Context, id uuid.UUID, errMsg string) (*queue.Job, error) {

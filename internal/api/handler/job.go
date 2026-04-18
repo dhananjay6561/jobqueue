@@ -166,6 +166,36 @@ func (h *JobHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, job)
 }
 
+// GetJobResult handles GET /api/v1/jobs/:id/result.
+// Returns the JSON result stored by the handler on job completion.
+// Returns 404 if the job doesn't exist, 204 if no result was stored.
+func (h *JobHandler) GetJobResult(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(r, "id")
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.store.GetJobResult(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, r, http.StatusNotFound, "job not found")
+		return
+	}
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "failed to get job result: "+err.Error())
+		return
+	}
+
+	if len(result) == 0 || string(result) == "null" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(result)
+}
+
 // CancelJob handles DELETE /api/v1/jobs/:id.
 // Only pending jobs can be cancelled. Returns 409 Conflict for other states.
 func (h *JobHandler) CancelJob(w http.ResponseWriter, r *http.Request) {

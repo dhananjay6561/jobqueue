@@ -19,16 +19,20 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message`
+			worker_id, error_message, result`
 
 	// queryGetJobByID fetches a single job by its UUID primary key.
 	queryGetJobByID = `
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message
+			worker_id, error_message, result
 		FROM jobs
 		WHERE id = $1`
+
+	// queryGetJobResult fetches only the result column for a completed job.
+	queryGetJobResult = `
+		SELECT result FROM jobs WHERE id = $1`
 
 	// queryListJobs fetches a page of jobs with optional status, type, and
 	// queue_name filters. Results are ordered by created_at DESC.
@@ -38,7 +42,7 @@ const (
 		SELECT
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message
+			worker_id, error_message, result
 		FROM jobs
 		WHERE
 			($1::job_status IS NULL OR status = $1::job_status)
@@ -73,19 +77,20 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message`
+			worker_id, error_message, result`
 
-	// queryMarkJobCompleted transitions a running job to completed.
+	// queryMarkJobCompleted transitions a running job to completed and stores result.
 	queryMarkJobCompleted = `
 		UPDATE jobs
 		SET
 			status       = 'completed',
-			completed_at = NOW()
+			completed_at = NOW(),
+			result       = $2
 		WHERE id = $1
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message`
+			worker_id, error_message, result`
 
 	// queryMarkJobFailed transitions a running job to failed and records the error.
 	queryMarkJobFailed = `
@@ -98,7 +103,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message`
+			worker_id, error_message, result`
 
 	// queryMarkJobDead transitions a failed job to dead (moves to DLQ table).
 	queryMarkJobDead = `
@@ -131,7 +136,7 @@ const (
 		RETURNING
 			id, type, payload, priority, status, attempts, max_attempts,
 			queue_name, scheduled_at, created_at, started_at, completed_at,
-			worker_id, error_message`
+			worker_id, error_message, result`
 
 	// --- Dead-Letter Queue ---
 

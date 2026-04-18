@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -72,7 +73,8 @@ type JobStorer interface {
 	GetJob(ctx context.Context, id uuid.UUID) (*queue.Job, error)
 	ListJobs(ctx context.Context, filter JobFilter) (Page[*queue.Job], error)
 	MarkJobStarted(ctx context.Context, id uuid.UUID, workerID string) (*queue.Job, error)
-	MarkJobCompleted(ctx context.Context, id uuid.UUID) (*queue.Job, error)
+	MarkJobCompleted(ctx context.Context, id uuid.UUID, result json.RawMessage) (*queue.Job, error)
+	GetJobResult(ctx context.Context, id uuid.UUID) (json.RawMessage, error)
 	MarkJobFailed(ctx context.Context, id uuid.UUID, errMsg string) (*queue.Job, error)
 	MarkJobDead(ctx context.Context, id uuid.UUID, errMsg string) error
 	CancelJob(ctx context.Context, id uuid.UUID) error
@@ -197,9 +199,10 @@ func (db *DB) MarkJobStarted(ctx context.Context, id uuid.UUID, workerID string)
 	return job, nil
 }
 
-// MarkJobCompleted transitions a running job to 'completed'.
-func (db *DB) MarkJobCompleted(ctx context.Context, id uuid.UUID) (*queue.Job, error) {
-	row := db.pool.QueryRow(ctx, queryMarkJobCompleted, id)
+// MarkJobCompleted transitions a running job to 'completed' and stores result.
+// result may be nil if the handler produced no output.
+func (db *DB) MarkJobCompleted(ctx context.Context, id uuid.UUID, result json.RawMessage) (*queue.Job, error) {
+	row := db.pool.QueryRow(ctx, queryMarkJobCompleted, id, result)
 	job, err := scanJob(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -208,6 +211,20 @@ func (db *DB) MarkJobCompleted(ctx context.Context, id uuid.UUID) (*queue.Job, e
 		return nil, fmt.Errorf("mark job completed %s: %w", id, err)
 	}
 	return job, nil
+}
+
+// GetJobResult returns the stored result JSON for a completed job.
+// Returns ErrNotFound if the job doesn't exist.
+func (db *DB) GetJobResult(ctx context.Context, id uuid.UUID) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := db.pool.QueryRow(ctx, queryGetJobResult, id).Scan(&result)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get job result %s: %w", id, err)
+	}
+	return result, nil
 }
 
 // MarkJobFailed transitions a running job to 'failed' and stores the error message.
@@ -508,6 +525,7 @@ func scanJob(row pgxScanner) (*queue.Job, error) {
 		&job.CompletedAt,
 		&job.WorkerID,
 		&job.ErrorMessage,
+		&job.Result,
 	)
 	if err != nil {
 		return nil, err

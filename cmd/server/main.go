@@ -129,9 +129,14 @@ func main() {
 	}
 	for _, jobType := range simulatedHandlers {
 		jt := jobType
-		workerPool.Register(jt, func(_ context.Context, _ *queue.Job) error {
+		workerPool.Register(jt, func(_ context.Context, job *queue.Job) (any, error) {
 			time.Sleep(500 * time.Millisecond)
-			return nil
+			return map[string]any{
+				"status":     "ok",
+				"job_type":   jt,
+				"job_id":     job.ID.String(),
+				"processed":  true,
+			}, nil
 		})
 	}
 
