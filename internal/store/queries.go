@@ -334,6 +334,26 @@ const (
 		RETURNING id, name, job_type, payload, queue_name, priority, max_attempts,
 		          cron_expression, enabled, last_run_at, next_run_at, created_at`
 
+	// queryListJobsCursor is a keyset-pagination variant of queryListJobs.
+	// The cursor is an opaque (created_at, id) pair encoded as two params.
+	// Parameters: $1=status, $2=type, $3=queue, $4=api_key_id,
+	//             $5=cursor_created_at (nullable timestamptz),
+	//             $6=cursor_id (nullable uuid), $7=limit.
+	queryListJobsCursor = `
+		SELECT
+			id, type, payload, priority, status, attempts, max_attempts,
+			queue_name, scheduled_at, created_at, started_at, completed_at,
+			worker_id, error_message, result, api_key_id, expires_at
+		FROM jobs
+		WHERE
+			($1::job_status IS NULL OR status = $1::job_status)
+			AND ($2::text IS NULL OR type = $2)
+			AND ($3::text IS NULL OR queue_name = $3)
+			AND ($4::uuid IS NULL OR api_key_id = $4::uuid)
+			AND ($5::timestamptz IS NULL OR (created_at, id) < ($5::timestamptz, $6::uuid))
+		ORDER BY created_at DESC, id DESC
+		LIMIT $7`
+
 	// queryGetJobsByIDs fetches multiple jobs by their UUIDs (used after batch insert).
 	queryGetJobsByIDs = `
 		SELECT
