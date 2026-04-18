@@ -109,11 +109,11 @@ const (
 			error_message = $1
 		WHERE id = $2`
 
-	// queryCancelJob sets a pending job to failed (as a manual cancellation).
+	// queryCancelJob sets a pending job to cancelled.
 	queryCancelJob = `
 		UPDATE jobs
 		SET
-			status        = 'failed',
+			status        = 'cancelled',
 			completed_at  = NOW(),
 			error_message = 'cancelled by user'
 		WHERE id = $1 AND status = 'pending'
