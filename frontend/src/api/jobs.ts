@@ -27,6 +27,12 @@ export async function enqueueJob(payload: EnqueueJobRequest): Promise<Job> {
   return data.data
 }
 
+export async function enqueueBatch(jobs: EnqueueJobRequest[]): Promise<Job[]> {
+  const { data } = await apiClient.post<ApiResponse<Job[]>>('/jobs/batch', jobs)
+  if (data.error) throw new Error(data.error)
+  return data.data ?? []
+}
+
 export async function cancelJob(id: string): Promise<void> {
   await apiClient.delete(`/jobs/${id}`)
 }
