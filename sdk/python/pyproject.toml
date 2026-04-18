@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jobqueue-client"
+version = "1.0.0"
+description = "Python client for the JobQueue API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+async = ["httpx>=0.24"]
+sync = ["httpx>=0.24"]
+dev = ["httpx>=0.24", "pytest", "pytest-asyncio"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobqueue_client"]
