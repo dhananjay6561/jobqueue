@@ -64,7 +64,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// Health and metrics (no version prefix — infrastructure consumers expect
 	// these at a stable path).
 	r.Get("/health", healthHandler(cfg.Store, cfg.Broker))
-	r.Get("/metrics", metricsHandler(cfg.Store, cfg.Hub))
+	r.Get("/metrics", prometheusHandler(cfg.Store, cfg.Hub))
 
 	// WebSocket upgrade endpoint.
 	r.Get("/ws", wsHandler.ServeWS)
@@ -172,46 +172,3 @@ func healthHandler(jobStore store.JobStorer, broker queue.Broker) http.HandlerFu
 	}
 }
 
-// metricsResponse is the JSON payload returned by GET /metrics.
-type metricsResponse struct {
-	QueueDepth    int64   `json:"queue_depth"`
-	ActiveWorkers int     `json:"active_workers"`
-	WSClients     int     `json:"ws_clients"`
-	JobsPerMinute int64   `json:"jobs_per_minute"`
-	DLQCount      int64   `json:"dlq_count"`
-	FailedRate    float64 `json:"failed_rate"`
-}
-
-// metricsHandler returns a lightweight metrics snapshot without external
-// instrumentation libraries.
-func metricsHandler(jobStore store.JobStorer, hub *ws.Hub) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-
-		stats, err := jobStore.GetStats(ctx)
-		if err != nil {
-			http.Error(w, `{"error":"failed to get metrics"}`, http.StatusInternalServerError)
-			return
-		}
-
-		workers, err := jobStore.ListWorkers(ctx, true)
-		if err != nil {
-			http.Error(w, `{"error":"failed to list workers"}`, http.StatusInternalServerError)
-			return
-		}
-
-		resp := metricsResponse{
-			QueueDepth:    stats.QueueDepth,
-			ActiveWorkers: len(workers),
-			WSClients:     hub.ClientCount(),
-			JobsPerMinute: stats.JobsPerMinute,
-			DLQCount:      stats.DLQCount,
-			FailedRate:    stats.FailedRate,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(resp)
-	}
-}

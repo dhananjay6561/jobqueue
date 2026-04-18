@@ -308,6 +308,7 @@ func (p *Pool) processJob(ctx context.Context, workerID string, id uuid.UUID, lo
 			log.Error().Err(err).Msg("failed to mark job completed")
 			return false
 		}
+		CounterJobsCompleted.Add(1)
 		p.publishEvent(EventJobCompleted, job, workerID)
 		log.Info().Str("type", job.Type).Msg("job completed")
 		return false
@@ -343,6 +344,7 @@ func (p *Pool) handleJobFailure(ctx context.Context, job *Job, workerID, errMsg 
 			return
 		}
 
+		CounterJobsFailed.Add(1)
 		p.publishEvent(EventJobFailed, failedJob, workerID)
 		log.Info().
 			Int("attempts", failedJob.Attempts).
@@ -363,6 +365,7 @@ func (p *Pool) handleJobFailure(ctx context.Context, job *Job, workerID, errMsg 
 		return
 	}
 
+	CounterJobsDead.Add(1)
 	p.publishEvent(EventJobDead, job, workerID)
 	log.Warn().Str("job_id", job.ID.String()).Msg("job moved to dead-letter queue")
 }

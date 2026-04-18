@@ -106,7 +106,8 @@ func (h *JobHandler) EnqueueJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Broadcast the enqueue event over WebSocket.
+	// Broadcast the enqueue event and bump the Prometheus counter.
+	queue.CounterJobsEnqueued.Add(1)
 	if h.publisher != nil {
 		h.publisher.Publish(queue.Event{
 			Type:    queue.EventJobEnqueued,
