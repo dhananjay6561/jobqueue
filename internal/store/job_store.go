@@ -96,6 +96,12 @@ type JobStorer interface {
 	// Statistics
 	GetStats(ctx context.Context) (JobStats, error)
 
+	// Webhooks
+	CreateWebhook(ctx context.Context, url, secret string, events []string, enabled bool) (*queue.Webhook, error)
+	ListWebhooks(ctx context.Context) ([]*queue.Webhook, error)
+	ListEnabledWebhooks(ctx context.Context) ([]*queue.Webhook, error)
+	DeleteWebhook(ctx context.Context, id uuid.UUID) error
+
 	// Infrastructure
 	Ping(ctx context.Context) error
 }

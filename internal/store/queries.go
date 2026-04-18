@@ -238,4 +238,22 @@ const (
 	// queryActiveWorkerCount returns the number of currently active workers.
 	queryActiveWorkerCount = `
 		SELECT COUNT(*) FROM workers WHERE status = 'active'`
+
+	// --- Webhooks ---
+
+	queryInsertWebhook = `
+		INSERT INTO webhooks (url, secret, events, enabled)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, url, secret, events, enabled, created_at, updated_at`
+
+	queryListWebhooks = `
+		SELECT id, url, secret, events, enabled, created_at, updated_at
+		FROM webhooks ORDER BY created_at DESC`
+
+	queryListEnabledWebhooks = `
+		SELECT id, url, secret, events, enabled, created_at, updated_at
+		FROM webhooks WHERE enabled = TRUE`
+
+	queryDeleteWebhook = `
+		DELETE FROM webhooks WHERE id = $1`
 )

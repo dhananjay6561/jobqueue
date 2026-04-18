@@ -57,6 +57,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	)
 	workerHandler := handler.NewWorkerHandler(cfg.Store)
 	wsHandler := handler.NewWSHandler(cfg.Hub)
+	webhookHandler := handler.NewWebhookHandler(cfg.Store)
 
 	// ── Routes ────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 		// Stats
 		r.Get("/stats", jobHandler.GetStats)
+
+		// Webhooks
+		r.Get("/webhooks", webhookHandler.ListWebhooks)
+		r.Post("/webhooks", webhookHandler.CreateWebhook)
+		r.Delete("/webhooks/{id}", webhookHandler.DeleteWebhook)
 	})
 
 	// Serve the React SPA if a static dir is configured.

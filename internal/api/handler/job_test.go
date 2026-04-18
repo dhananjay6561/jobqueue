@@ -189,6 +189,16 @@ func (m *mockJobStore) GetStats(_ context.Context) (store.JobStats, error) {
 	return store.JobStats{}, nil
 }
 func (m *mockJobStore) Ping(_ context.Context) error { return nil }
+func (m *mockJobStore) CreateWebhook(_ context.Context, _, _ string, _ []string, _ bool) (*queue.Webhook, error) {
+	return &queue.Webhook{}, nil
+}
+func (m *mockJobStore) ListWebhooks(_ context.Context) ([]*queue.Webhook, error) {
+	return []*queue.Webhook{}, nil
+}
+func (m *mockJobStore) ListEnabledWebhooks(_ context.Context) ([]*queue.Webhook, error) {
+	return []*queue.Webhook{}, nil
+}
+func (m *mockJobStore) DeleteWebhook(_ context.Context, _ uuid.UUID) error { return nil }
 
 // mockBroker records enqueue/remove calls for assertion.
 type mockBroker struct {

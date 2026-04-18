@@ -95,6 +95,11 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
+	// ── Webhook dispatcher ─────────────────────────────────────────────────────
+	webhookDispatcher := queue.NewWebhookDispatcher(dbStore)
+	// fanout publishes to both WebSocket hub and webhook dispatcher.
+	fanout := &fanoutPublisher{hub: hub, dispatcher: webhookDispatcher}
+
 	// ── Stats broadcast ticker (every 5 seconds) ───────────────────────────────
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	statsDone := make(chan struct{})
@@ -109,7 +114,7 @@ func main() {
 		Retry:     cfg.Retry,
 		Broker:    broker,
 		Store:     dbStore,
-		Publisher: hub,
+		Publisher: fanout,
 		Queues:    []string{queue.DefaultQueueName, "critical", "bulk"},
 	})
 
@@ -202,6 +207,23 @@ func main() {
 	workerPool.Shutdown()
 
 	log.Info().Msg("shutdown complete")
+}
+
+// fanoutPublisher publishes job events to both the WebSocket hub and the
+// webhook dispatcher so every consumer receives every event.
+type fanoutPublisher struct {
+	hub        queue.EventPublisher
+	dispatcher *queue.WebhookDispatcher
+}
+
+func (f *fanoutPublisher) Publish(event queue.Event) {
+	f.hub.Publish(event)
+	// Only dispatch webhooks for job lifecycle events, not heartbeats/stats.
+	switch event.Type {
+	case queue.EventJobCompleted, queue.EventJobFailed, queue.EventJobDead,
+		queue.EventJobStarted, queue.EventJobEnqueued:
+		go f.dispatcher.Dispatch(context.Background(), event)
+	}
 }
 
 // runStatsBroadcast sends a stats.update WebSocket event every 5 seconds.
