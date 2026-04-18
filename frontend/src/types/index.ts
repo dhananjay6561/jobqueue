@@ -105,6 +105,34 @@ export interface DLQEntry {
   requeued: boolean
 }
 
+// ─── Cron Types ───────────────────────────────────────────────────────────────
+
+export interface CronSchedule {
+  id: string
+  name: string
+  job_type: string
+  payload: Record<string, unknown>
+  queue_name: string
+  priority: number
+  max_attempts: number
+  cron_expression: string
+  enabled: boolean
+  last_run_at: string | null
+  next_run_at: string
+  created_at: string
+}
+
+export interface CreateCronRequest {
+  name: string
+  job_type: string
+  payload?: Record<string, unknown>
+  queue_name?: string
+  priority?: number
+  max_attempts?: number
+  cron_expression: string
+  enabled?: boolean
+}
+
 // ─── API Response Wrapper ─────────────────────────────────────────────────────
 
 export interface ApiResponse<T> {
