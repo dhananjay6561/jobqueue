@@ -1,0 +1,409 @@
+openapi: "3.1.0"
+info:
+  title: JobQueue API
+  version: "1.0.0"
+  description: |
+    HTTP API for enqueueing, inspecting, and managing background jobs.
+    Authenticate with `X-API-Key: <key>` on every request when auth is enabled.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - apiKeyHeader: []
+
+components:
+  securitySchemes:
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Job:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        payload: { type: object }
+        priority: { type: integer, minimum: 1, maximum: 10 }
+        status: { type: string, enum: [pending, running, completed, failed, dead, cancelled] }
+        attempts: { type: integer }
+        max_attempts: { type: integer }
+        queue_name: { type: string }
+        scheduled_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        worker_id: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
+        result: { type: object, nullable: true }
+        api_key_id: { type: string, format: uuid, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        tags: { type: object, additionalProperties: { type: string } }
+
+    EnqueueRequest:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string }
+        payload: { type: object }
+        priority: { type: integer, minimum: 1, maximum: 10, default: 5 }
+        max_attempts: { type: integer, minimum: 1, default: 3 }
+        queue_name: { type: string, default: default }
+        scheduled_at: { type: string, format: date-time }
+        ttl_seconds: { type: integer, minimum: 0 }
+        tags: { type: object, additionalProperties: { type: string } }
+
+    DLQEntry:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        payload: { type: object }
+        priority: { type: integer }
+        queue_name: { type: string }
+        max_attempts: { type: integer }
+        total_attempts: { type: integer }
+        last_error: { type: string, nullable: true }
+        died_at: { type: string, format: date-time }
+        original_created_at: { type: string, format: date-time }
+        requeued: { type: boolean }
+        api_key_id: { type: string, format: uuid, nullable: true }
+
+    Stats:
+      type: object
+      properties:
+        total_jobs: { type: integer }
+        pending: { type: integer }
+        running: { type: integer }
+        completed: { type: integer }
+        failed: { type: integer }
+        dead: { type: integer }
+        cancelled: { type: integer }
+        active_workers: { type: integer }
+        jobs_per_minute: { type: integer }
+        failed_rate: { type: number }
+        queue_depth: { type: integer }
+        dlq_count: { type: integer }
+
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        events: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    CronSchedule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        job_type: { type: string }
+        payload: { type: object }
+        queue_name: { type: string }
+        priority: { type: integer }
+        max_attempts: { type: integer }
+        cron_expression: { type: string }
+        enabled: { type: boolean }
+        last_run_at: { type: string, format: date-time, nullable: true }
+        next_run_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+
+    APIKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        key_prefix: { type: string }
+        tier: { type: string, enum: [free, pro, business] }
+        jobs_used: { type: integer }
+        jobs_limit: { type: integer }
+        reset_at: { type: string, format: date-time }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    ApiResponse:
+      type: object
+      properties:
+        data: {}
+        error: { type: string, nullable: true }
+        meta:
+          type: object
+          properties:
+            request_id: { type: string }
+            total_count: { type: integer }
+            limit: { type: integer }
+            offset: { type: integer }
+            has_more: { type: boolean }
+
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        data: { nullable: true }
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200": { description: Healthy }
+        "503": { description: Degraded }
+
+  /api/v1/jobs:
+    get:
+      summary: List jobs
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string } }
+        - { name: queue, in: query, schema: { type: string } }
+        - { name: tags, in: query, schema: { type: string }, description: "key:val,key2:val2" }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200": { description: Paginated job list }
+    post:
+      summary: Enqueue a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnqueueRequest" }
+      responses:
+        "201": { description: Job created }
+        "429": { description: Usage limit reached }
+    delete:
+      summary: Bulk-delete terminal jobs before a timestamp
+      parameters:
+        - { name: before, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        "200": { description: "{ deleted: N }" }
+
+  /api/v1/jobs/batch:
+    post:
+      summary: Enqueue up to 500 jobs atomically
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/EnqueueRequest" }
+              maxItems: 500
+      responses:
+        "201": { description: Jobs created }
+
+  /api/v1/jobs/cursor:
+    get:
+      summary: List jobs with cursor (keyset) pagination
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string } }
+        - { name: queue, in: query, schema: { type: string } }
+        - { name: tags, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        "200":
+          description: Cursor page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Job" } }
+                  next_cursor: { type: string }
+                  has_more: { type: boolean }
+                  limit: { type: integer }
+
+  /api/v1/jobs/{id}:
+    get:
+      summary: Get a job by ID
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Job object }
+        "404": { description: Not found }
+    delete:
+      summary: Cancel a pending job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Cancelled }
+        "404": { description: Not found }
+        "409": { description: Job not in pending state }
+
+  /api/v1/jobs/{id}/retry:
+    post:
+      summary: Retry a failed or dead job
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Job re-enqueued }
+
+  /api/v1/jobs/{id}/result:
+    get:
+      summary: Get the result stored by the job handler
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Result JSON }
+        "204": { description: No result stored }
+        "404": { description: Not found }
+
+  /api/v1/stats:
+    get:
+      summary: Queue statistics (scoped to calling API key)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stats" }
+
+  /api/v1/dlq:
+    get:
+      summary: List dead-letter queue entries
+      parameters:
+        - { name: include_requeued, in: query, schema: { type: boolean } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: DLQ entries }
+
+  /api/v1/dlq/{id}/requeue:
+    post:
+      summary: Re-enqueue a DLQ entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201": { description: New job created }
+        "404": { description: Not found }
+        "409": { description: Already requeued }
+
+  /api/v1/workers:
+    get:
+      summary: List workers
+      responses:
+        "200": { description: Worker list }
+
+  /api/v1/webhooks:
+    get:
+      summary: List webhooks
+      responses:
+        "200": { description: Webhook list }
+    post:
+      summary: Register a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string }
+                secret: { type: string }
+                events: { type: array, items: { type: string } }
+                enabled: { type: boolean }
+      responses:
+        "201": { description: Webhook created }
+
+  /api/v1/webhooks/{id}:
+    delete:
+      summary: Delete a webhook
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/cron:
+    get:
+      summary: List cron schedules
+      responses:
+        "200": { description: Schedule list }
+    post:
+      summary: Create a cron schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, job_type, cron_expression]
+              properties:
+                name: { type: string }
+                job_type: { type: string }
+                cron_expression: { type: string }
+                payload: { type: object }
+                queue_name: { type: string }
+                priority: { type: integer }
+                max_attempts: { type: integer }
+                enabled: { type: boolean }
+      responses:
+        "201": { description: Schedule created }
+
+  /api/v1/cron/{id}:
+    patch:
+      summary: Update a cron schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                cron_expression: { type: string }
+                payload: { type: object }
+      responses:
+        "200": { description: Updated schedule }
+    delete:
+      summary: Delete a cron schedule
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/keys:
+    get:
+      summary: List API keys
+      responses:
+        "200": { description: Key list }
+    post:
+      summary: Create an API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                tier: { type: string, enum: [free, pro, business] }
+      responses:
+        "201":
+          description: Key created (raw key only returned once)
+
+  /api/v1/keys/{id}:
+    delete:
+      summary: Delete an API key
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/usage:
+    get:
+      summary: Get usage for the current API key
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/APIKey" }
