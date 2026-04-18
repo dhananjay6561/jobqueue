@@ -296,6 +296,22 @@ const (
 	queryDeleteCron = `
 		DELETE FROM cron_schedules WHERE id = $1`
 
+	// queryPatchCron updates only the provided fields (enabled, cron_expression,
+	// payload). NULL parameters leave the column unchanged.
+	// Parameters: $1=enabled (nullable bool), $2=cron_expression (nullable text),
+	//             $3=payload (nullable jsonb), $4=next_run_at (nullable timestamptz),
+	//             $5=id.
+	queryPatchCron = `
+		UPDATE cron_schedules
+		SET
+			enabled         = COALESCE($1, enabled),
+			cron_expression = COALESCE($2, cron_expression),
+			payload         = COALESCE($3, payload),
+			next_run_at     = COALESCE($4, next_run_at)
+		WHERE id = $5
+		RETURNING id, name, job_type, payload, queue_name, priority, max_attempts,
+		          cron_expression, enabled, last_run_at, next_run_at, created_at`
+
 	// queryGetJobsByIDs fetches multiple jobs by their UUIDs (used after batch insert).
 	queryGetJobsByIDs = `
 		SELECT
