@@ -30,7 +30,7 @@ func okHandler(t *testing.T) http.Handler {
 
 func TestAPIKeyAuth_NoAuth_PassThrough(t *testing.T) {
 	t.Parallel()
-	mw := middleware.APIKeyAuth("", "", nil)(okHandler(t))
+	mw := middleware.APIKeyAuth("", "", nil, "", nil)(okHandler(t))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	mw.ServeHTTP(rec, req)
@@ -41,7 +41,7 @@ func TestAPIKeyAuth_NoAuth_PassThrough(t *testing.T) {
 
 func TestAPIKeyAuth_StaticKey_Valid(t *testing.T) {
 	t.Parallel()
-	mw := middleware.APIKeyAuth("secret", "", nil)(okHandler(t))
+	mw := middleware.APIKeyAuth("secret", "", nil, "", nil)(okHandler(t))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-API-Key", "secret")
 	rec := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func TestAPIKeyAuth_StaticKey_Valid(t *testing.T) {
 
 func TestAPIKeyAuth_StaticKey_Invalid(t *testing.T) {
 	t.Parallel()
-	mw := middleware.APIKeyAuth("secret", "", nil)(okHandler(t))
+	mw := middleware.APIKeyAuth("secret", "", nil, "", nil)(okHandler(t))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-API-Key", "wrong")
 	rec := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func TestAPIKeyAuth_AdminKey_SetsContext(t *testing.T) {
 		gotAdmin = middleware.IsAdminFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := middleware.APIKeyAuth("", "adminpass", nil)(inner)
+	mw := middleware.APIKeyAuth("", "adminpass", nil, "", nil)(inner)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-API-Key", "adminpass")
 	rec := httptest.NewRecorder()
@@ -93,7 +93,7 @@ func TestAPIKeyAuth_DBKey_SetsContext(t *testing.T) {
 		gotKey = middleware.APIKeyFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := middleware.APIKeyAuth("", "", store)(inner)
+	mw := middleware.APIKeyAuth("", "", store, "", nil)(inner)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-API-Key", "any-value")
 	rec := httptest.NewRecorder()
