@@ -12,7 +12,7 @@ RUN npm run build
 # ─── Stage 2: Go builder ─────────────────────────────────────────────────────
 FROM golang:1.26.2-alpine AS builder
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /build
 
@@ -20,13 +20,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-w -s" \
     -trimpath \
     -o /jobqueue \
     ./cmd/server
 
-# ─── Stage 2: Final image ────────────────────────────────────────────────────
+# ─── Stage 3: Final image ────────────────────────────────────────────────────
 # Distroless gives us the smallest possible attack surface — no shell, no
 # package manager, just the binary and TLS certificates.
 FROM gcr.io/distroless/static-debian12:nonroot
