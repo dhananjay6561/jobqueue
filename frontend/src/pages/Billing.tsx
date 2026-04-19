@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { createCheckout, createCustomerPortal } from '@/api/billing'
+import { createCheckout, createCustomerPortal, regenerateKey, type RegeneratedKey } from '@/api/billing'
 import { portalClient } from '@/api/billing'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
@@ -46,6 +46,8 @@ export function Billing() {
   const { addToast } = useUiStore()
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [openingPortal, setOpeningPortal] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [newKey, setNewKey] = useState<RegeneratedKey | null>(null)
 
   const { data: usage, isLoading } = useQuery<UsageData>({
     queryKey: ['portal-usage'],
@@ -181,17 +183,50 @@ export function Billing() {
         </div>
       )}
 
-      {/* API key info */}
+      {/* API key info + regenerate */}
       {usage && (
         <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-5 space-y-3">
           <span className="text-xs text-[#6b6b8a] uppercase tracking-widest font-mono">Your API key</span>
-          <div className="flex items-center gap-3">
-            <code className="flex-1 bg-[#0d0d14] border border-[#2a2a3e] rounded-lg px-3 py-2 text-sm font-mono text-[#7c6af7]">
-              {(usage as UsageData & { key_prefix?: string }).key_prefix ?? 'demo-api'}••••••••••••••••••••••••
-            </code>
-          </div>
+
+          {newKey ? (
+            <div className="space-y-2">
+              <p className="text-xs text-amber-400">New key generated — save it now, it won't be shown again.</p>
+              <code className="block bg-[#0d0d14] border border-amber-500/30 rounded-lg px-3 py-2 text-sm font-mono text-green-400 break-all select-all">
+                {newKey.key}
+              </code>
+              <button onClick={() => setNewKey(null)} className="text-xs text-[#6b6b8a] hover:text-[#e2e2f0]">
+                Dismiss
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <code className="flex-1 bg-[#0d0d14] border border-[#2a2a3e] rounded-lg px-3 py-2 text-sm font-mono text-[#7c6af7]">
+                {(usage as UsageData & { key_prefix?: string }).key_prefix ?? 'demo-api'}••••••••••••••••••••••••
+              </code>
+              <button
+                onClick={async () => {
+                  if (!confirm('This will invalidate your current API key. All existing integrations will break. Continue?')) return
+                  setRegenerating(true)
+                  try {
+                    const k = await regenerateKey()
+                    setNewKey(k)
+                  } catch (err: unknown) {
+                    addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Regeneration failed' })
+                  } finally {
+                    setRegenerating(false)
+                  }
+                }}
+                disabled={regenerating}
+                className="text-xs text-[#6b6b8a] hover:text-red-400 border border-[#2a2a3e] hover:border-red-500/30 rounded-lg px-3 py-2 transition-colors disabled:opacity-50 shrink-0"
+              >
+                {regenerating ? 'Regenerating…' : 'Regenerate'}
+              </button>
+            </div>
+          )}
+
           <p className="text-xs text-[#6b6b8a]">
-            Your full API key was shown once at registration. Use it as <code className="text-[#7c6af7]">X-API-Key</code> header in API calls.
+            Use as <code className="text-[#7c6af7]">X-API-Key</code> header in API calls.
+            Regenerating invalidates the old key immediately.
           </p>
         </div>
       )}
