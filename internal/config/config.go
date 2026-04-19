@@ -43,6 +43,18 @@ type ServerConfig struct {
 	// AdminKey is a separate secret that bypasses per-key scoping so operators
 	// can inspect all jobs globally. Set ADMIN_KEY env var to enable.
 	AdminKey string
+	// JWTSecret signs and verifies user session tokens.
+	JWTSecret string
+	// BaseURL is the public-facing URL used for Stripe redirect URLs.
+	BaseURL string
+	// StripeSecretKey is the Stripe API secret key.
+	StripeSecretKey string
+	// StripeWebhookSecret is the signing secret for Stripe webhook events.
+	StripeWebhookSecret string
+	// StripeProPriceID is the Stripe Price ID for the Pro tier.
+	StripeProPriceID string
+	// StripeBusinessPriceID is the Stripe Price ID for the Business tier.
+	StripeBusinessPriceID string
 }
 
 // DatabaseConfig holds PostgreSQL connection parameters.
@@ -110,6 +122,12 @@ func Load() (Config, error) {
 	cfg.Server.Host = envString("SERVER_HOST", "0.0.0.0")
 	cfg.Server.APIKey = os.Getenv("API_KEY")
 	cfg.Server.AdminKey = os.Getenv("ADMIN_KEY")
+	cfg.Server.JWTSecret = envString("JWT_SECRET", "change-me-in-production")
+	cfg.Server.BaseURL = envString("BASE_URL", "http://localhost:8080")
+	cfg.Server.StripeSecretKey = os.Getenv("STRIPE_SECRET_KEY")
+	cfg.Server.StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
+	cfg.Server.StripeProPriceID = os.Getenv("STRIPE_PRO_PRICE_ID")
+	cfg.Server.StripeBusinessPriceID = os.Getenv("STRIPE_BUSINESS_PRICE_ID")
 	// Render (and many PaaS) inject PORT; fall back to SERVER_PORT then 8080.
 	if os.Getenv("SERVER_PORT") == "" && os.Getenv("PORT") != "" {
 		os.Setenv("SERVER_PORT", os.Getenv("PORT"))
