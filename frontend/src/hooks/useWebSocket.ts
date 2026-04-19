@@ -4,7 +4,12 @@ import { useWsStore } from '@/store/wsStore'
 import { useUiStore } from '@/store/uiStore'
 import type { Job, QueueStats, WsEvent, WorkerStatus } from '@/types'
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8080/ws'
+function getWsUrl(): string {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}/ws`
+}
+const WS_URL = getWsUrl()
 const MAX_RECONNECT_DELAY = 30000
 const BASE_RECONNECT_DELAY = 1000
 
