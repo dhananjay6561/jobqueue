@@ -186,16 +186,23 @@ func main() {
 
 	// ── HTTP server ────────────────────────────────────────────────────────────
 	router := api.NewRouter(api.RouterConfig{
-		Store:              dbStore,
-		Broker:             broker,
-		Hub:                hub,
-		Publisher:          hub,
-		DefaultMaxAttempts: cfg.Retry.DefaultMaxAttempts,
-		RateLimitRPS:       cfg.Server.RateLimit,
-		RateLimitBurst:     cfg.Server.RateBurst,
-		StaticDir:          "/frontend/dist",
-		APIKey:             cfg.Server.APIKey,
-		AdminKey:           cfg.Server.AdminKey,
+		Store:                 dbStore,
+		UserStore:             dbStore,
+		Broker:                broker,
+		Hub:                   hub,
+		Publisher:             hub,
+		DefaultMaxAttempts:    cfg.Retry.DefaultMaxAttempts,
+		RateLimitRPS:          cfg.Server.RateLimit,
+		RateLimitBurst:        cfg.Server.RateBurst,
+		StaticDir:             "/frontend/dist",
+		APIKey:                cfg.Server.APIKey,
+		AdminKey:              cfg.Server.AdminKey,
+		JWTSecret:             cfg.Server.JWTSecret,
+		BaseURL:               cfg.Server.BaseURL,
+		StripeSecretKey:       cfg.Server.StripeSecretKey,
+		StripeWebhookSecret:   cfg.Server.StripeWebhookSecret,
+		StripeProPriceID:      cfg.Server.StripeProPriceID,
+		StripeBusinessPriceID: cfg.Server.StripeBusinessPriceID,
 	})
 
 	httpServer := &http.Server{
