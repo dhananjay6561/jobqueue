@@ -55,6 +55,12 @@ type ServerConfig struct {
 	StripeProPriceID string
 	// StripeBusinessPriceID is the Stripe Price ID for the Business tier.
 	StripeBusinessPriceID string
+	// SMTP settings for transactional email (password reset, etc.)
+	SMTPHost string
+	SMTPPort string
+	SMTPUser string
+	SMTPPass string
+	SMTPFrom string
 }
 
 // DatabaseConfig holds PostgreSQL connection parameters.
@@ -128,6 +134,11 @@ func Load() (Config, error) {
 	cfg.Server.StripeWebhookSecret = os.Getenv("STRIPE_WEBHOOK_SECRET")
 	cfg.Server.StripeProPriceID = os.Getenv("STRIPE_PRO_PRICE_ID")
 	cfg.Server.StripeBusinessPriceID = os.Getenv("STRIPE_BUSINESS_PRICE_ID")
+	cfg.Server.SMTPHost = os.Getenv("SMTP_HOST")
+	cfg.Server.SMTPPort = envString("SMTP_PORT", "587")
+	cfg.Server.SMTPUser = os.Getenv("SMTP_USER")
+	cfg.Server.SMTPPass = os.Getenv("SMTP_PASS")
+	cfg.Server.SMTPFrom = envString("SMTP_FROM", "noreply@jobqueue.dev")
 	// Render (and many PaaS) inject PORT; fall back to SERVER_PORT then 8080.
 	if os.Getenv("SERVER_PORT") == "" && os.Getenv("PORT") != "" {
 		os.Setenv("SERVER_PORT", os.Getenv("PORT"))
