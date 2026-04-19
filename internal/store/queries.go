@@ -434,4 +434,22 @@ const (
 
 	querySetAPIKeyStripeSubscription = `
 		UPDATE api_keys SET stripe_subscription_id = $1 WHERE id = $2`
+
+	queryUpdatePasswordHash = `
+		UPDATE users SET password_hash = $1 WHERE id = $2`
+
+	queryInsertResetToken = `
+		INSERT INTO password_reset_tokens (user_id, token_hash)
+		VALUES ($1, $2)`
+
+	queryGetResetToken = `
+		SELECT id, user_id, expires_at, used
+		FROM password_reset_tokens
+		WHERE token_hash = $1`
+
+	queryMarkResetTokenUsed = `
+		UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1`
+
+	queryDeleteUserAPIKeys = `
+		DELETE FROM api_keys WHERE user_id = $1`
 )

@@ -11,6 +11,14 @@ import (
 	"github.com/dj/jobqueue/internal/queue"
 )
 
+// PasswordResetToken is a one-time token for resetting a user's password.
+type PasswordResetToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ExpiresAt string
+	Used      bool
+}
+
 // UserStorer defines persistence operations for the user/auth layer.
 type UserStorer interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (*queue.User, error)
@@ -22,6 +30,11 @@ type UserStorer interface {
 	GetAPIKeyByID(ctx context.Context, id uuid.UUID) (*queue.APIKey, error)
 	UpdateAPIKeyTierBySubscription(ctx context.Context, subscriptionID string, tier queue.APIKeyTier) error
 	SetAPIKeyStripeSubscription(ctx context.Context, keyID uuid.UUID, subscriptionID string) error
+	UpdatePasswordHash(ctx context.Context, userID uuid.UUID, hash string) error
+	CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, tokenHash string) error
+	GetPasswordResetToken(ctx context.Context, tokenHash string) (*PasswordResetToken, error)
+	MarkResetTokenUsed(ctx context.Context, tokenHash string) error
+	RegenerateAPIKey(ctx context.Context, userID uuid.UUID) (*queue.APIKey, string, error)
 }
 
 var _ UserStorer = (*DB)(nil)
@@ -132,4 +145,58 @@ func scanUser(row userScanner) (*queue.User, error) {
 		u.StripeCustomerID = *stripeCustomerID
 	}
 	return u, nil
+}
+
+func (db *DB) UpdatePasswordHash(ctx context.Context, userID uuid.UUID, hash string) error {
+	_, err := db.pool.Exec(ctx, queryUpdatePasswordHash, hash, userID)
+	return err
+}
+
+func (db *DB) CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, tokenHash string) error {
+	_, err := db.pool.Exec(ctx, queryInsertResetToken, userID, tokenHash)
+	return err
+}
+
+func (db *DB) GetPasswordResetToken(ctx context.Context, tokenHash string) (*PasswordResetToken, error) {
+	t := &PasswordResetToken{}
+	err := db.pool.QueryRow(ctx, queryGetResetToken, tokenHash).Scan(
+		&t.ID, &t.UserID, &t.ExpiresAt, &t.Used,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return t, err
+}
+
+func (db *DB) MarkResetTokenUsed(ctx context.Context, tokenHash string) error {
+	_, err := db.pool.Exec(ctx, queryMarkResetTokenUsed, tokenHash)
+	return err
+}
+
+func (db *DB) RegenerateAPIKey(ctx context.Context, userID uuid.UUID) (*queue.APIKey, string, error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx, queryDeleteUserAPIKeys, userID); err != nil {
+		return nil, "", fmt.Errorf("delete old keys: %w", err)
+	}
+
+	raw := generateAPIKey()
+	hash := hashKey(raw)
+	prefix := raw[:8]
+	limit := queue.TierLimits[queue.TierFree]
+
+	row := tx.QueryRow(ctx, queryInsertAPIKeyForUser, "default", hash, prefix, string(queue.TierFree), limit, userID)
+	key, err := scanAPIKey(row)
+	if err != nil {
+		return nil, "", fmt.Errorf("insert key: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, "", fmt.Errorf("commit: %w", err)
+	}
+	return key, raw, nil
 }
