@@ -203,6 +203,11 @@ func main() {
 		StripeWebhookSecret:   cfg.Server.StripeWebhookSecret,
 		StripeProPriceID:      cfg.Server.StripeProPriceID,
 		StripeBusinessPriceID: cfg.Server.StripeBusinessPriceID,
+		SMTPHost:              cfg.Server.SMTPHost,
+		SMTPPort:              cfg.Server.SMTPPort,
+		SMTPUser:              cfg.Server.SMTPUser,
+		SMTPPass:              cfg.Server.SMTPPass,
+		SMTPFrom:              cfg.Server.SMTPFrom,
 	})
 
 	httpServer := &http.Server{

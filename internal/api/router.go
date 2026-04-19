@@ -33,12 +33,17 @@ type RouterConfig struct {
 	StaticDir          string // path to built frontend; empty = no UI served
 	APIKey             string // when non-empty, /api/v1/* requires X-API-Key
 	AdminKey           string // when non-empty, requests with this key bypass scoping
-	JWTSecret          string
-	StripeSecretKey    string
-	StripeWebhookSecret string
-	StripeProPriceID   string
+	JWTSecret             string
+	StripeSecretKey       string
+	StripeWebhookSecret   string
+	StripeProPriceID      string
 	StripeBusinessPriceID string
-	BaseURL            string
+	BaseURL               string
+	SMTPHost              string
+	SMTPPort              string
+	SMTPUser              string
+	SMTPPass              string
+	SMTPFrom              string
 }
 
 // NewRouter constructs and returns the application's HTTP router.
@@ -55,6 +60,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	rateLimiter := appMiddleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
 	r.Use(rateLimiter.Middleware)
+	// Stricter rate limiter for auth endpoints: 5 req/min per IP.
+	authRateLimiter := appMiddleware.NewRateLimiter(1, 5)
 
 	// ── Instantiate handlers ──────────────────────────────────────────────────
 	jobHandler := handler.NewJobHandler(
@@ -68,7 +75,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	webhookHandler := handler.NewWebhookHandler(cfg.Store)
 	cronHandler := handler.NewCronHandler(cfg.Store)
 	apiKeyHandler := handler.NewAPIKeyHandler(cfg.Store)
-	authHandler := handler.NewAuthHandler(cfg.UserStore, cfg.JWTSecret)
+	authHandler := handler.NewAuthHandler(
+		cfg.UserStore, cfg.JWTSecret, cfg.BaseURL,
+		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom,
+	)
 	billingHandler := handler.NewBillingHandler(
 		cfg.UserStore,
 		cfg.StripeSecretKey,
@@ -88,9 +98,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// WebSocket upgrade endpoint.
 	r.Get("/ws", wsHandler.ServeWS)
 
-	// Auth — public registration and login.
-	r.Post("/auth/register", authHandler.Register)
-	r.Post("/auth/login", authHandler.Login)
+	// Auth — public endpoints with strict rate limiting.
+	r.With(authRateLimiter.Middleware).Post("/auth/register", authHandler.Register)
+	r.With(authRateLimiter.Middleware).Post("/auth/login", authHandler.Login)
+	r.With(authRateLimiter.Middleware).Post("/auth/forgot-password", authHandler.ForgotPassword)
+	r.With(authRateLimiter.Middleware).Post("/auth/reset-password", authHandler.ResetPassword)
 
 	// Stripe webhook — uses its own signature-based auth.
 	r.Post("/webhooks/stripe", billingHandler.StripeWebhook)
@@ -101,6 +113,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/usage", authHandler.GetUsage)
 		r.Post("/checkout", billingHandler.CreateCheckout)
 		r.Post("/customer-portal", billingHandler.CustomerPortal)
+		r.Post("/regenerate-key", authHandler.RegenerateKey)
 	})
 
 	// Versioned REST API — optionally gated by API key.
