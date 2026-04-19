@@ -101,6 +101,18 @@ services:
       - key: STRIPE_BUSINESS_PRICE_ID
         sync: false
 
+      # SMTP — for password reset emails (leave blank to log reset links to stdout)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
 # ── Managed PostgreSQL (free 90-day trial) ────────────────────────────────────
 databases:
   - name: jobqueue-db
