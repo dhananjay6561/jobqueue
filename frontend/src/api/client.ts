@@ -10,12 +10,20 @@ export const apiClient = axios.create({
   timeout: 15000,
 })
 
-// Request interceptor — inject API key from localStorage and add request ID
+// Request interceptor — inject JWT (preferred) or API key, plus request ID
 apiClient.interceptors.request.use((config) => {
   config.headers['X-Request-ID'] = crypto.randomUUID()
   try {
-    const stored = localStorage.getItem('jobqueue-ui')
-    const key: string = stored ? (JSON.parse(stored)?.state?.apiKey ?? '') : ''
+    // JWT takes priority — if logged in, backend resolves key from JWT
+    const authStored = localStorage.getItem('jobqueue-auth')
+    const token: string = authStored ? (JSON.parse(authStored)?.state?.token ?? '') : ''
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
+      return config
+    }
+    // Fallback: raw API key (for users who pasted a key manually)
+    const uiStored = localStorage.getItem('jobqueue-ui')
+    const key: string = uiStored ? (JSON.parse(uiStored)?.state?.apiKey ?? '') : ''
     if (key) config.headers['X-API-Key'] = key
   } catch {
     // ignore parse errors
