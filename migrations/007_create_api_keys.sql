@@ -1,6 +1,9 @@
 -- API keys table: stores hashed keys with tier, usage counters, and limits.
 -- The raw key is never stored — only a SHA-256 hash.
-CREATE TYPE api_key_tier AS ENUM ('free', 'pro', 'business');
+DO $$ BEGIN
+    CREATE TYPE api_key_tier AS ENUM ('free', 'pro', 'business');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id          UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
