@@ -78,10 +78,19 @@ func (db *DB) Close() {
 	db.pool.Close()
 }
 
-// RunMigrations executes all migration files in order. In production this is
-// typically handled by a migration tool (goose, migrate), but for local
-// development and testing it is convenient to run them inline at startup.
+// RunMigrations executes all migration files in order, skipping any that have
+// already been applied. Applied migrations are tracked in schema_migrations.
 func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
+	// Ensure tracking table exists before anything else.
+	_, err := db.pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			name       TEXT PRIMARY KEY,
+			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`)
+	if err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	entries, err := os.ReadDir(migrationDir)
 	if err != nil {
 		return fmt.Errorf("read migration directory %q: %w", migrationDir, err)
@@ -105,6 +114,14 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 			return fmt.Errorf("migration file %q escapes migration directory", name)
 		}
 
+		// Skip already-applied migrations.
+		var applied bool
+		_ = db.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE name=$1)`, name).Scan(&applied)
+		if applied {
+			db.logger.Debug().Str("migration", name).Msg("skipping already-applied migration")
+			continue
+		}
+
 		sql, err := os.ReadFile(path) // #nosec G304 -- path is validated against absDir above
 		if err != nil {
 			return fmt.Errorf("read migration %q: %w", path, err)
@@ -114,6 +131,10 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 
 		if _, err := db.pool.Exec(ctx, string(sql)); err != nil {
 			return fmt.Errorf("execute migration %q: %w", path, err)
+		}
+
+		if _, err := db.pool.Exec(ctx, `INSERT INTO schema_migrations (name) VALUES ($1)`, name); err != nil {
+			return fmt.Errorf("record migration %q: %w", path, err)
 		}
 	}
 
