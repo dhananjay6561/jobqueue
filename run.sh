@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "==> Starting jobqueue (Postgres + Redis + App)..."
-docker compose up --build -d
+docker compose up --build --force-recreate -d
 
 echo "==> Waiting for server to be ready..."
 for i in $(seq 1 20); do
