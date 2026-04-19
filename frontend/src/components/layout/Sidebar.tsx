@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useUiStore } from '@/store/uiStore'
 import { useWsStore } from '@/store/wsStore'
+import { useAuthStore } from '@/store/authStore'
 import { clsx } from 'clsx'
 
 interface NavItem {
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { to: '/workers', label: 'Workers', icon: <NavIcon path="M13 6a3 3 0 11-6 0 3 3 0 016 0zM3 19a7 7 0 0114 0" /> },
   { to: '/dlq', label: 'Dead Letter', icon: <NavIcon path="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /> },
   { to: '/cron', label: 'Cron', icon: <NavIcon path="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 3v5l3 3" /> },
+  { to: '/billing', label: 'Billing', icon: <NavIcon path="M3 5h14M3 10h14M3 15h7" /> },
 ]
 
 const wsStatusConfig = {
@@ -37,6 +39,7 @@ const wsStatusConfig = {
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUiStore()
   const { connectionStatus } = useWsStore()
+  const { user, clearAuth } = useAuthStore()
   const ws = wsStatusConfig[connectionStatus]
 
   return (
@@ -96,6 +99,24 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* User / auth */}
+      {!sidebarCollapsed && user && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mx-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-[#1e1e2e] flex items-center justify-between gap-2"
+        >
+          <span className="text-[11px] text-[#6b6b8a] truncate">{user.email}</span>
+          <button
+            onClick={clearAuth}
+            className="text-[10px] text-[#6b6b8a] hover:text-red-400 transition-colors shrink-0"
+            title="Sign out"
+          >
+            ⎋
+          </button>
+        </motion.div>
+      )}
 
       {/* WS Status */}
       {!sidebarCollapsed && (
