@@ -159,6 +159,9 @@ var _ JobStorer = (*DB)(nil)
 
 // CreateJob inserts a new job into the jobs table and returns the persisted row.
 func (db *DB) CreateJob(ctx context.Context, job *queue.Job) (*queue.Job, error) {
+	if job.Tags == nil {
+		job.Tags = map[string]string{}
+	}
 	row := db.pool.QueryRow(ctx, queryInsertJob,
 		job.ID,
 		job.Type,
@@ -189,6 +192,9 @@ func (db *DB) CreateJobBatch(ctx context.Context, jobs []*queue.Job) ([]*queue.J
 
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, job := range jobs {
+		if job.Tags == nil {
+			job.Tags = map[string]string{}
+		}
 		_, err := tx.Exec(ctx, queryInsertJob,
 			job.ID,
 			job.Type,
