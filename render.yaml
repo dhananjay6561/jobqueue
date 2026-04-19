@@ -79,6 +79,28 @@ services:
       - key: API_KEY
         sync: false
 
+      # Admin key — bypasses per-key scoping for operator access
+      - key: ADMIN_KEY
+        sync: false
+
+      # JWT — signs user session tokens (set a long random string)
+      - key: JWT_SECRET
+        sync: false
+
+      # Base URL — public-facing URL of this service (used for Stripe redirects)
+      - key: BASE_URL
+        sync: false
+
+      # Stripe — leave blank if not using billing
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: STRIPE_BUSINESS_PRICE_ID
+        sync: false
+
 # ── Managed PostgreSQL (free 90-day trial) ────────────────────────────────────
 databases:
   - name: jobqueue-db
