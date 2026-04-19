@@ -105,10 +105,6 @@ func IsAdminFromContext(ctx context.Context) bool {
 	return v
 }
 
-type usageIncrementer interface {
-	IncrementAPIKeyUsage(ctx context.Context, raw string) (*queue.APIKey, error)
-}
-
 // UsageLimitMiddleware increments the monthly job counter before passing through.
 // For JWT-authed requests the raw key is not available, so we increment by key ID via the stored key.
 func UsageLimitMiddleware(db store.JobStorer) func(http.Handler) http.Handler {
