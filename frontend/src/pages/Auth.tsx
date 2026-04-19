@@ -33,7 +33,7 @@ export function Auth() {
       }
     } catch (err: unknown) {
       addToast({
-        type: 'error',
+        variant: 'error',
         message: err instanceof Error ? err.message : 'Authentication failed',
       })
     } finally {

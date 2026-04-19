@@ -61,7 +61,7 @@ export function Billing() {
       const url = await createCheckout(tier)
       window.location.href = url
     } catch (err: unknown) {
-      addToast({ type: 'error', message: err instanceof Error ? err.message : 'Checkout failed' })
+      addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Checkout failed' })
       setUpgrading(null)
     }
   }
@@ -72,7 +72,7 @@ export function Billing() {
       const url = await createCustomerPortal()
       window.location.href = url
     } catch (err: unknown) {
-      addToast({ type: 'error', message: err instanceof Error ? err.message : 'Could not open portal' })
+      addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Could not open portal' })
       setOpeningPortal(false)
     }
   }
