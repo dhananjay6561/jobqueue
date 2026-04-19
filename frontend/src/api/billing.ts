@@ -27,3 +27,16 @@ export async function createCustomerPortal(): Promise<string> {
   const { data } = await portalClient.post<{ data: { url: string } }>('/portal/customer-portal')
   return data.data.url
 }
+
+export interface RegeneratedKey {
+  key: string
+  key_prefix: string
+  tier: string
+  jobs_limit: number
+  warning: string
+}
+
+export async function regenerateKey(): Promise<RegeneratedKey> {
+  const { data } = await portalClient.post<{ data: RegeneratedKey }>('/portal/regenerate-key')
+  return data.data
+}

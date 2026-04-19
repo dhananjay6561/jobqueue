@@ -36,3 +36,13 @@ export async function login(email: string, password: string): Promise<LoginRespo
   const { data } = await authClient.post<{ data: LoginResponse }>('/auth/login', { email, password })
   return data.data
 }
+
+export async function forgotPassword(email: string): Promise<string> {
+  const { data } = await authClient.post<{ data: { message: string } }>('/auth/forgot-password', { email })
+  return data.data.message
+}
+
+export async function resetPassword(token: string, password: string): Promise<string> {
+  const { data } = await authClient.post<{ data: { message: string } }>('/auth/reset-password', { token, password })
+  return data.data.message
+}
