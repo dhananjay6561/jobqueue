@@ -101,6 +101,15 @@ export function Auth() {
           ))}
         </div>
 
+        {/* Demo credentials */}
+        <button
+          type="button"
+          onClick={() => { setEmail('demo@jobqueue.dev'); setPassword('demo1234') }}
+          className="w-full py-2 rounded-lg border border-dashed border-[#2a2a3e] text-xs text-[#6b6b8a] hover:text-[#e2e2f0] hover:border-[#7c6af7]/40 transition-colors"
+        >
+          Fill demo credentials
+        </button>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="text-xs text-[#6b6b8a] uppercase tracking-widest font-mono">Email</label>
