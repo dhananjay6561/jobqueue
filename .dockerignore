@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+frontend/node_modules
+frontend/dist
+bin/
+coverage.out
+coverage.html
+*.md
+.env*
