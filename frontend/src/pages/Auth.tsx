@@ -104,10 +104,33 @@ export function Auth() {
         {/* Demo credentials */}
         <button
           type="button"
-          onClick={() => { setEmail('demo@jobqueue.dev'); setPassword('demo1234') }}
-          className="w-full py-2 rounded-lg border border-dashed border-[#2a2a3e] text-xs text-[#6b6b8a] hover:text-[#e2e2f0] hover:border-[#7c6af7]/40 transition-colors"
+          disabled={loading}
+          onClick={async () => {
+            const demoEmail = 'demo@jobqueue.dev'
+            const demoPass = 'demo1234'
+            setEmail(demoEmail)
+            setPassword(demoPass)
+            setLoading(true)
+            try {
+              const res = await login(demoEmail, demoPass)
+              setAuth(res.token, res.user)
+              navigate('/')
+            } catch {
+              try {
+                const res = await register(demoEmail, demoPass)
+                setAuth(res.token, res.user)
+                setApiKey(res.api_key.key)
+                setNewKey(res.api_key.key)
+              } catch (err: unknown) {
+                addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Demo login failed' })
+              }
+            } finally {
+              setLoading(false)
+            }
+          }}
+          className="w-full py-2 rounded-lg border border-dashed border-[#2a2a3e] text-xs text-[#6b6b8a] hover:text-[#e2e2f0] hover:border-[#7c6af7]/40 transition-colors disabled:opacity-50"
         >
-          Fill demo credentials
+          {loading ? 'Signing in…' : 'Continue with demo account'}
         </button>
 
         <form onSubmit={handleSubmit} className="space-y-4">
