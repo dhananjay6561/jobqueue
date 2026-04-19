@@ -105,7 +105,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	// Versioned REST API — optionally gated by API key.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.AdminKey, cfg.Store))
+		r.Use(appMiddleware.APIKeyAuth(cfg.APIKey, cfg.AdminKey, cfg.Store, cfg.JWTSecret, cfg.UserStore))
 		// Jobs — enqueue is metered, reads are free
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs", jobHandler.EnqueueJob)
 		r.With(appMiddleware.UsageLimitMiddleware(cfg.Store)).Post("/jobs/batch", jobHandler.EnqueueJobBatch)
