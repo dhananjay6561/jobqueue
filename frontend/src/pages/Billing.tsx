@@ -181,6 +181,21 @@ export function Billing() {
         </div>
       )}
 
+      {/* API key info */}
+      {usage && (
+        <div className="bg-[#111118] border border-[#1e1e2e] rounded-xl p-5 space-y-3">
+          <span className="text-xs text-[#6b6b8a] uppercase tracking-widest font-mono">Your API key</span>
+          <div className="flex items-center gap-3">
+            <code className="flex-1 bg-[#0d0d14] border border-[#2a2a3e] rounded-lg px-3 py-2 text-sm font-mono text-[#7c6af7]">
+              {(usage as UsageData & { key_prefix?: string }).key_prefix ?? 'demo-api'}••••••••••••••••••••••••
+            </code>
+          </div>
+          <p className="text-xs text-[#6b6b8a]">
+            Your full API key was shown once at registration. Use it as <code className="text-[#7c6af7]">X-API-Key</code> header in API calls.
+          </p>
+        </div>
+      )}
+
       {!user && (
         <div className="text-center py-8">
           <p className="text-sm text-[#6b6b8a] mb-3">Sign in to manage your billing.</p>
