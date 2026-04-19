@@ -396,4 +396,42 @@ const (
 
 	queryDeleteAPIKey = `
 		DELETE FROM api_keys WHERE id = $1`
+
+	// --- Users ---
+
+	queryInsertUser = `
+		INSERT INTO users (email, password_hash)
+		VALUES ($1, $2)
+		RETURNING id, email, password_hash, stripe_customer_id, created_at`
+
+	queryGetUserByEmail = `
+		SELECT id, email, password_hash, stripe_customer_id, created_at
+		FROM users WHERE email = $1`
+
+	queryGetUserByID = `
+		SELECT id, email, password_hash, stripe_customer_id, created_at
+		FROM users WHERE id = $1`
+
+	queryUpdateStripeCustomerID = `
+		UPDATE users SET stripe_customer_id = $1 WHERE id = $2`
+
+	queryInsertAPIKeyForUser = `
+		INSERT INTO api_keys (name, key_hash, key_prefix, tier, jobs_limit, user_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at`
+
+	queryGetAPIKeysByUserID = `
+		SELECT id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at
+		FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`
+
+	queryGetAPIKeyByID = `
+		SELECT id, name, key_prefix, tier, jobs_used, jobs_limit, reset_at, enabled, created_at
+		FROM api_keys WHERE id = $1`
+
+	queryUpdateAPIKeyTierBySubscription = `
+		UPDATE api_keys SET tier = $1::api_key_tier, jobs_limit = $2
+		WHERE stripe_subscription_id = $3`
+
+	querySetAPIKeyStripeSubscription = `
+		UPDATE api_keys SET stripe_subscription_id = $1 WHERE id = $2`
 )
