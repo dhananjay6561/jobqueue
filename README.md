@@ -1,12 +1,73 @@
-# jobqueue — Distributed Job Queue System
+# JobQueue
 
 [![CI](https://github.com/dhananjay6561/jobqueue/actions/workflows/ci.yml/badge.svg)](https://github.com/dhananjay6561/jobqueue/actions/workflows/ci.yml)
 [![Docker](https://github.com/dhananjay6561/jobqueue/actions/workflows/docker.yml/badge.svg)](https://github.com/dhananjay6561/jobqueue/actions/workflows/docker.yml)
 
-A production-grade distributed background job processing system written in Go.
-Enqueue jobs via HTTP, process them concurrently with a worker pool, and monitor
-everything in real time over WebSocket. Multi-tenant out of the box — every API
-key sees only its own jobs.
+A production-grade distributed background job processing system. Enqueue tasks via HTTP, process them concurrently with a worker pool, monitor everything in real time, and scale across teams with built-in multi-tenancy.
+
+**New to job queues?** Read the [complete beginner guide →](GUIDE.md)
+
+---
+
+## What It Does
+
+When your web app needs to do something slow — send an email, resize an image, generate a report — you don't want the user waiting. JobQueue lets you hand that work off instantly and process it in the background, reliably, with retries, scheduling, and full observability.
+
+```
+Your app                    JobQueue
+────────────────            ──────────────────────────────────
+POST /api/v1/jobs ────────► Saved to PostgreSQL
+                            Pushed into Redis queue
+                ◄────────── Returns job ID (instant)
+
+                            Worker picks up the job
+                            Executes it
+                            Retries on failure (exponential backoff)
+                            Moves to DLQ after max retries
+```
+
+---
+
+## Features
+
+| Category | What's included |
+|---|---|
+| **Jobs** | Enqueue, batch (up to 500), get, list, cancel, retry, store result |
+| **Scheduling** | `scheduled_at` for future execution, 5-field cron schedules |
+| **Queues** | `default`, `critical`, `bulk` — priority-ordered |
+| **Retries** | Exponential backoff, configurable `max_attempts` per job |
+| **Dead-letter queue** | Failed jobs preserved forever, one-click requeue |
+| **TTL** | Per-job auto-expiry, bulk purge endpoint, hourly background cleanup |
+| **Tags** | Arbitrary `key:value` metadata, filterable on list endpoints |
+| **Pagination** | Offset-based and cursor-based (stable across live inserts) |
+| **Auth** | Register/login with JWT sessions + DB-backed API keys with tiers |
+| **Multi-tenancy** | Each API key sees only its own jobs |
+| **Admin mode** | `ADMIN_KEY` bypasses scoping for global visibility |
+| **Rate limiting** | Per-key token bucket with `X-RateLimit-*` headers |
+| **Usage metering** | Monthly job counter, 429 on limit, upgrade via Stripe |
+| **Webhooks** | HMAC-signed HTTP callbacks on job lifecycle events |
+| **Prometheus** | `/metrics` — counters, gauges, duration histograms |
+| **WebSocket** | Real-time event stream to the dashboard |
+| **Dashboard** | React SPA — jobs, workers, DLQ, cron, live events |
+| **Billing** | Stripe Checkout integration for Pro/Business tier upgrades |
+| **SDKs** | Go, Node.js (ESM + CJS), Python (sync + async) |
+| **OpenAPI** | Full 3.1 spec at `openapi.yaml` |
+
+---
+
+## Quick Start
+
+**Prerequisites:** Docker and Docker Compose v2.
+
+```bash
+git clone https://github.com/dhananjay6561/jobqueue
+cd jobqueue
+./run.sh
+```
+
+That's it. The script builds the image, starts Postgres + Redis + the app, and waits until everything is healthy.
+
+Open **http://localhost:8080** — you'll be prompted to create an account or use the demo credentials (`demo@jobqueue.dev` / `demo1234`).
 
 ---
 
@@ -15,32 +76,28 @@ key sees only its own jobs.
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                       HTTP Clients                           │
-│          (curl, dashboard, SDKs, internal services)          │
+│          (browser, curl, SDKs, internal services)            │
 └───────────────────────────┬──────────────────────────────────┘
                             │  REST API  /  WebSocket
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                      Chi HTTP Router                         │
-│  Auth middleware (API key / admin) → Rate limiter (per key)  │
+│  Auth middleware (JWT / API key / admin) → Rate limiter      │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌──────────┐  │
 │  │Job Handler │ │Cron Handler│ │Key Handler │ │WS Handler│  │
 │  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └────┬─────┘  │
 └────────┼──────────────┼──────────────┼───────────────┼───────┘
-         │              │              │               │
          ▼              ▼              ▼               ▼
-┌─────────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
-│ PostgreSQL Store│ │Cron Store│ │Key Store │ │   WS Hub     │
-│ (source of truth│ │          │ │          │ │(broadcasts to│
-│  + audit log)   │ └──────────┘ └──────────┘ │ all clients) │
+┌─────────────────┐                            ┌──────────────┐
+│ PostgreSQL Store│                            │   WS Hub     │
+│ (source of truth│                            │(broadcasts to│
+│  + audit log)   │                            │ all clients) │
 └────────┬────────┘                            └──────────────┘
          ▲
-         │
 ┌────────┴────────────────────────────────────────────────────┐
 │                       Worker Pool                           │
-│   Worker-0  Worker-1  Worker-2  Worker-3  Worker-4          │
-│                       │                                     │
-│             Dequeue job ID (ZPOPMIN)                        │
-└────────────────────────┼────────────────────────────────────┘
+│   Worker-0  Worker-1  Worker-2  ...                         │
+└────────────────────────┬────────────────────────────────────┘
                          ▼
 ┌────────────────────────────────────────────────────────────┐
 │                     Redis Broker                           │
@@ -53,81 +110,57 @@ key sees only its own jobs.
 
 ---
 
-## Features
-
-| Category | What's included |
-|---|---|
-| **Jobs** | Enqueue, batch enqueue (up to 500), get, list, cancel, retry, get result |
-| **Scheduling** | `scheduled_at` for future execution, 5-field cron schedules |
-| **Queues** | `default`, `critical`, `bulk` — priority-ordered via Redis scores |
-| **Retries** | Exponential backoff per job, configurable `max_attempts` |
-| **Dead-letter** | DLQ with manual or policy-based requeue |
-| **TTL** | Per-job `expires_at` / `ttl_seconds`; bulk purge endpoint; hourly auto-purge |
-| **Tags** | Arbitrary `map[string]string` metadata on jobs, filterable via `?tags=k:v` |
-| **Pagination** | Offset-based + cursor-based (stable across live inserts) |
-| **Auth** | DB-backed API keys with tiers (free/pro/business), static key, or open |
-| **Multi-tenancy** | Jobs scoped to API key — each key sees only its own data |
-| **Admin mode** | `ADMIN_KEY` bypasses scoping for operator-level visibility |
-| **Rate limiting** | Per-key (or per-IP fallback) token bucket with `X-RateLimit-*` headers |
-| **Usage metering** | Monthly job counter per key, 429 when limit hit, `GET /api/v1/usage` |
-| **Webhooks** | HMAC-signed HTTP POST on job lifecycle events |
-| **Prometheus** | `GET /metrics` — counters, gauges, `job_duration_seconds` histogram |
-| **WebSocket** | Real-time event stream to all connected dashboard clients |
-| **Dashboard** | React SPA — jobs, workers, DLQ, cron schedules, live events feed |
-| **SDKs** | Go, Node.js (ESM + CJS), Python (sync + async) |
-| **OpenAPI** | `openapi.yaml` — full 3.1 spec for every endpoint |
-
----
-
-## Prerequisites
-
-| Tool           | Version |
-|----------------|---------|
-| Docker         | 24+     |
-| Docker Compose | v2      |
-| Go (dev only)  | 1.22+   |
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/dhananjay6561/jobqueue && cd jobqueue
-cp .env.example .env
-docker compose up --build -d
-curl http://localhost:8080/health
-```
-
-```json
-{"status":"ok","checks":{"postgres":"healthy","redis":"healthy"},"uptime":"3s"}
-```
-
-Open **http://localhost:8080** for the dashboard.
-
----
-
 ## API Reference
 
-All endpoints return:
-```json
-{ "data": <result|null>, "error": <message|null>, "meta": { "request_id": "..." } }
+### Authentication
+
+All `/api/v1/*` endpoints require authentication. You can authenticate with either:
+
+- **JWT session** (recommended for dashboard users): log in at `/auth/login`, then the frontend sends `Authorization: Bearer <token>` automatically.
+- **API key** (recommended for programmatic access): pass `X-API-Key: <your-key>` on every request.
+
+```bash
+# Using API key
+curl -H 'X-API-Key: qly_abc123...' http://localhost:8080/api/v1/jobs
 ```
 
-List endpoints include:
+### Response envelope
+
+Every endpoint returns:
+```json
+{ "data": <result or null>, "error": <message or null>, "meta": { "request_id": "..." } }
+```
+
+List endpoints add pagination to `meta`:
 ```json
 "meta": { "total_count": 42, "limit": 20, "offset": 0, "has_more": true }
 ```
 
-Authentication: pass `X-API-Key: <key>` on every request when auth is enabled.
+---
+
+### Auth Endpoints
+
+```bash
+# Register (creates account + free API key)
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "you@example.com", "password": "yourpassword"}'
+
+# Login
+curl -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "you@example.com", "password": "yourpassword"}'
+```
 
 ---
 
 ### Jobs
 
 ```bash
-# Enqueue
+# Enqueue a job
 curl -X POST http://localhost:8080/api/v1/jobs \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: <key>' \
   -d '{
     "type": "send_email",
     "payload": {"to": "user@example.com"},
@@ -138,46 +171,78 @@ curl -X POST http://localhost:8080/api/v1/jobs \
     "tags": {"env": "prod", "user_id": "42"}
   }'
 
-# Batch enqueue (up to 500 jobs atomically)
+# Batch enqueue (up to 500, single transaction)
 curl -X POST http://localhost:8080/api/v1/jobs/batch \
   -H 'Content-Type: application/json' \
-  -d '[{"type":"resize_image","payload":{"url":"..."}},{"type":"send_email","payload":{"to":"..."}}]'
+  -H 'X-API-Key: <key>' \
+  -d '[
+    {"type":"resize_image","payload":{"url":"..."}},
+    {"type":"send_email","payload":{"to":"..."}}
+  ]'
 
 # Schedule for the future
 curl -X POST http://localhost:8080/api/v1/jobs \
   -H 'Content-Type: application/json' \
-  -d '{"type":"send_notification","payload":{"user_id":42},"scheduled_at":"2026-05-01T09:00:00Z"}'
+  -H 'X-API-Key: <key>' \
+  -d '{"type":"send_notification","payload":{"user_id":42},"scheduled_at":"2026-12-01T09:00:00Z"}'
 
-# List (offset pagination)
-curl "http://localhost:8080/api/v1/jobs?status=failed&limit=20&offset=0"
+# List jobs (offset pagination)
+curl -H 'X-API-Key: <key>' \
+  "http://localhost:8080/api/v1/jobs?status=failed&limit=20&offset=0"
 
-# List (cursor pagination — stable across concurrent inserts)
-curl "http://localhost:8080/api/v1/jobs/cursor?limit=20"
-curl "http://localhost:8080/api/v1/jobs/cursor?cursor=<next_cursor_from_previous_response>"
+# List jobs (cursor pagination — stable across concurrent inserts)
+curl -H 'X-API-Key: <key>' \
+  "http://localhost:8080/api/v1/jobs/cursor?limit=20"
+curl -H 'X-API-Key: <key>' \
+  "http://localhost:8080/api/v1/jobs/cursor?cursor=<next_cursor>"
 
 # Filter by tags
-curl "http://localhost:8080/api/v1/jobs?tags=env:prod,user_id:42"
+curl -H 'X-API-Key: <key>' \
+  "http://localhost:8080/api/v1/jobs?tags=env:prod,user_id:42"
 
-# Get / cancel / retry
-curl http://localhost:8080/api/v1/jobs/<id>
-curl -X DELETE http://localhost:8080/api/v1/jobs/<id>
-curl -X POST http://localhost:8080/api/v1/jobs/<id>/retry
+# Get a job
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/jobs/<id>
 
 # Get stored result
-curl http://localhost:8080/api/v1/jobs/<id>/result
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/jobs/<id>/result
+
+# Cancel a pending job
+curl -X DELETE -H 'X-API-Key: <key>' http://localhost:8080/api/v1/jobs/<id>
+
+# Retry a failed job
+curl -X POST -H 'X-API-Key: <key>' http://localhost:8080/api/v1/jobs/<id>/retry
 
 # Bulk-delete terminal jobs older than a timestamp
-curl -X DELETE "http://localhost:8080/api/v1/jobs?before=2026-01-01T00:00:00Z"
+curl -X DELETE -H 'X-API-Key: <key>' \
+  "http://localhost:8080/api/v1/jobs?before=2026-01-01T00:00:00Z"
 ```
+
+**Job fields:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | yes | Handler name your workers are registered for |
+| `payload` | object | no | Arbitrary JSON passed to the handler |
+| `priority` | int (1–10) | no | Higher = dequeued first. Default: 5 |
+| `queue_name` | string | no | `default`, `critical`, or `bulk`. Default: `default` |
+| `max_attempts` | int | no | Retry ceiling. Default: 5 |
+| `scheduled_at` | RFC3339 | no | Future execution time |
+| `ttl_seconds` | int | no | Auto-delete N seconds after reaching terminal state |
+| `tags` | object | no | `{"key": "value"}` metadata for filtering |
 
 ---
 
 ### Dead-Letter Queue
 
 ```bash
-curl "http://localhost:8080/api/v1/dlq?limit=20"
-curl "http://localhost:8080/api/v1/dlq?include_requeued=true"
-curl -X POST http://localhost:8080/api/v1/dlq/<id>/requeue
+# List failed jobs
+curl -H 'X-API-Key: <key>' "http://localhost:8080/api/v1/dlq?limit=20"
+
+# Include already-requeued entries
+curl -H 'X-API-Key: <key>' "http://localhost:8080/api/v1/dlq?include_requeued=true"
+
+# Requeue a dead job (creates a fresh job, links back to this entry)
+curl -X POST -H 'X-API-Key: <key>' http://localhost:8080/api/v1/dlq/<id>/requeue
 ```
 
 ---
@@ -185,9 +250,10 @@ curl -X POST http://localhost:8080/api/v1/dlq/<id>/requeue
 ### Cron Schedules
 
 ```bash
-# Create
+# Create a recurring schedule
 curl -X POST http://localhost:8080/api/v1/cron \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: <key>' \
   -d '{
     "name": "daily-cleanup",
     "job_type": "cleanup_storage",
@@ -197,87 +263,97 @@ curl -X POST http://localhost:8080/api/v1/cron \
     "priority": 3
   }'
 
-# Enable / disable / update expression
+# Pause a schedule
 curl -X PATCH http://localhost:8080/api/v1/cron/<id> \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: <key>' \
   -d '{"enabled": false}'
 
+# Change the schedule
 curl -X PATCH http://localhost:8080/api/v1/cron/<id> \
   -H 'Content-Type: application/json' \
+  -H 'X-API-Key: <key>' \
   -d '{"cron_expression": "*/30 * * * *"}'
 
 # List / delete
-curl http://localhost:8080/api/v1/cron
-curl -X DELETE http://localhost:8080/api/v1/cron/<id>
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/cron
+curl -X DELETE -H 'X-API-Key: <key>' http://localhost:8080/api/v1/cron/<id>
 ```
 
-**Expression reference:**
+**Cron expression reference:**
 
 | Expression | Meaning |
 |---|---|
 | `* * * * *` | Every minute |
-| `0 * * * *` | Every hour |
+| `0 * * * *` | Every hour (on the hour) |
 | `0 9 * * *` | Daily at 09:00 |
 | `0 9 * * 1` | Every Monday at 09:00 |
 | `*/15 * * * *` | Every 15 minutes |
-| `0 2 1 * *` | 1st of month at 02:00 |
+| `0 2 1 * *` | 1st of every month at 02:00 |
 
 ---
 
-### API Key Management
+### Webhooks
 
 ```bash
-# Create a key (raw key returned once — store it)
-curl -X POST http://localhost:8080/api/v1/keys \
+# Register a webhook endpoint
+curl -X POST http://localhost:8080/api/v1/webhooks \
   -H 'Content-Type: application/json' \
-  -d '{"name": "my-service", "tier": "pro"}'
+  -H 'X-API-Key: <key>' \
+  -d '{
+    "url": "https://yourapp.com/hooks/jobqueue",
+    "secret": "your-signing-secret",
+    "events": ["job.completed", "job.failed", "job.dead"]
+  }'
 
-# List keys (prefixes only, never hashes)
-curl http://localhost:8080/api/v1/keys
-
-# Delete a key
-curl -X DELETE http://localhost:8080/api/v1/keys/<id>
-
-# Check your own usage
-curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/usage
+# List / delete
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/webhooks
+curl -X DELETE -H 'X-API-Key: <key>' http://localhost:8080/api/v1/webhooks/<id>
 ```
 
-**Tiers:**
+**Verify the signature in your receiver:**
+```js
+// Node.js
+const sig = crypto.createHmac('sha256', 'your-signing-secret')
+  .update(rawBody).digest('hex')
+if (`sha256=${sig}` !== req.headers['x-webhook-signature']) {
+  return res.status(401).send('Bad signature')
+}
+```
 
-| Tier | Monthly limit |
-|---|---|
-| `free` | 1,000 jobs |
-| `pro` | 100,000 jobs |
-| `business` | Unlimited |
+Supported events: `job.enqueued` `job.started` `job.completed` `job.failed` `job.dead`
 
 ---
 
-### Stats, Workers, Health, Metrics
+### Stats, Workers, Health
 
 ```bash
-curl http://localhost:8080/api/v1/stats    # scoped to calling API key
-curl http://localhost:8080/api/v1/workers
-curl http://localhost:8080/health
-curl http://localhost:8080/metrics         # Prometheus text format
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/stats    # job counts by status
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/workers  # worker pool status
+curl -H 'X-API-Key: <key>' http://localhost:8080/api/v1/usage    # monthly usage vs limit
+curl http://localhost:8080/health                                  # postgres + redis health
+curl http://localhost:8080/metrics                                 # Prometheus text format
 ```
 
 ---
 
 ### WebSocket
 
+Connect to `ws://localhost:8080/ws` to receive real-time events:
+
 ```bash
 websocat ws://localhost:8080/ws
 ```
 
-| Event | Trigger |
+| Event | Triggered when |
 |---|---|
 | `job.enqueued` | New job accepted |
 | `job.started` | Worker claims a job |
-| `job.completed` | Handler returns nil |
+| `job.completed` | Handler returns successfully |
 | `job.failed` | Handler errors (retryable) |
 | `job.dead` | All retries exhausted → DLQ |
-| `worker.heartbeat` | Worker periodic ping |
-| `stats.update` | Aggregate snapshot every 5s |
+| `worker.heartbeat` | Worker periodic ping (every 10s) |
+| `stats.update` | Aggregate snapshot (every 5s) |
 
 ---
 
@@ -288,11 +364,21 @@ websocat ws://localhost:8080/ws
 ```go
 import jobqueue "github.com/dhananjay6561/jobqueue/sdk/go"
 
-client := jobqueue.New("http://localhost:8080", jobqueue.WithAPIKey("sk_..."))
+client := jobqueue.New("http://localhost:8080", jobqueue.WithAPIKey("qly_..."))
+
+// Enqueue
 job, err := client.Enqueue(ctx, jobqueue.EnqueueRequest{
     Type:    "send_email",
     Payload: map[string]any{"to": "user@example.com"},
+    Priority: 8,
 })
+
+// Poll result
+for job.Status != "completed" && job.Status != "dead" {
+    time.Sleep(500 * time.Millisecond)
+    job, _ = client.GetJob(ctx, job.ID.String())
+}
+result, _ := client.GetJobResult(ctx, job.ID.String())
 ```
 
 ### Node.js
@@ -300,12 +386,24 @@ job, err := client.Enqueue(ctx, jobqueue.EnqueueRequest{
 ```js
 import { JobQueueClient } from '@jobqueue/client'
 
-const client = new JobQueueClient('http://localhost:8080', { apiKey: 'sk_...' })
-const job = await client.enqueue({ type: 'send_email', payload: { to: 'user@example.com' } })
-const batch = await client.enqueueBatch([
+const jq = new JobQueueClient('http://localhost:8080', { apiKey: 'qly_...' })
+
+// Single job
+const job = await jq.enqueue({ type: 'send_email', payload: { to: 'user@example.com' } })
+
+// Batch
+const jobs = await jq.enqueueBatch([
   { type: 'resize_image', payload: { url: '...' } },
-  { type: 'send_email', payload: { to: '...' } },
+  { type: 'send_email',   payload: { to: '...'  } },
 ])
+
+// Cursor-paginated list
+let cursor = ''
+do {
+  const page = await jq.listJobsCursor({ status: 'completed', cursor, limit: 50 })
+  console.log(page.items)
+  cursor = page.next_cursor
+} while (page.has_more)
 ```
 
 ### Python
@@ -314,59 +412,61 @@ const batch = await client.enqueueBatch([
 from jobqueue_client import JobQueueClient, AsyncJobQueueClient
 
 # Sync
-with JobQueueClient("http://localhost:8080", api_key="sk_...") as client:
-    job = client.enqueue(type="send_email", payload={"to": "user@example.com"})
-    stats = client.get_stats()
+with JobQueueClient("http://localhost:8080", api_key="qly_...") as jq:
+    job = jq.enqueue(type="send_email", payload={"to": "user@example.com"})
+    batch = jq.enqueue_batch([
+        {"type": "resize_image", "payload": {"url": "..."}},
+        {"type": "send_email",   "payload": {"to": "..."}},
+    ])
+    stats = jq.get_stats()
 
 # Async
-async with AsyncJobQueueClient("http://localhost:8080", api_key="sk_...") as client:
-    job = await client.enqueue(type="send_email", payload={"to": "user@example.com"})
+async with AsyncJobQueueClient("http://localhost:8080", api_key="qly_...") as jq:
+    job = await jq.enqueue(type="generate_report", payload={"id": 1})
 ```
 
 ---
 
 ## How Priority Works
 
-The Redis sorted-set score encodes both priority and schedule time:
+Jobs are stored in Redis sorted sets where the score encodes both priority and schedule time:
 
 ```
 score = -(priority × 1e15) + scheduledAt.UnixNano
 ```
 
-The `1e15` multiplier means a higher-priority job always dequeues before a lower-priority one, regardless of when it was scheduled (dominates ~285 years of time difference). Within the same priority, earlier `scheduled_at` wins.
+The `1e15` multiplier means a priority-10 job always dequeues before a priority-1 job, no matter when it was scheduled (it dominates ~285 years of nanosecond timestamps). Within the same priority, earlier `scheduled_at` wins.
 
 ---
 
-## How Retry + DLQ Works
+## How Retries Work
 
 ```
 Handler returns error
         │
         ▼
 attempts < max_attempts?
-    ├── YES → status = failed, re-enqueue with backoff:
-    │          delay = base_delay × 2^(attempt-1), capped at max_delay
-    │          e.g. 5s → 10s → 20s → 40s → 80s
+    ├── YES → status = failed, re-enqueue after backoff:
+    │          delay = base_delay × 2^(attempt-1)  (capped at max_delay)
+    │          e.g. 5s → 10s → 20s → 40s → 80s → ...
     │
-    └── NO  → status = dead, insert into dead_letter_jobs
-               broadcast job.dead over WebSocket
+    └── NO  → status = dead → inserted into dead_letter_jobs
+                               WebSocket broadcasts job.dead
 ```
 
-DLQ entries are never auto-deleted (unless `expires_at` is set).
-Requeue via `POST /api/v1/dlq/:id/requeue` — creates a fresh job, resets counters, links back to original entry.
+DLQ entries are preserved indefinitely unless `expires_at` is set. Requeue via `POST /api/v1/dlq/:id/requeue` — creates a fresh job with reset counters, marks the DLQ entry as `requeued`.
 
 ---
 
-## Admin Mode
+## Tiers and Billing
 
-Set `ADMIN_KEY` to a separate secret. Requests authenticated with this key bypass per-key data scoping and see all jobs globally — useful for operators and debugging.
+| Tier | Monthly jobs | Price |
+|---|---|---|
+| Free | 1,000 | $0 |
+| Pro | 100,000 | $29/mo |
+| Business | Unlimited | $99/mo |
 
-```bash
-ADMIN_KEY=ops-secret-key
-
-curl -H 'X-API-Key: ops-secret-key' http://localhost:8080/api/v1/jobs   # all jobs
-curl -H 'X-API-Key: ops-secret-key' http://localhost:8080/api/v1/stats  # global stats
-```
+Register at `/auth/register` to get a free tier API key. Upgrade via the Billing page in the dashboard (Stripe required — set `STRIPE_SECRET_KEY` and related env vars).
 
 ---
 
@@ -374,10 +474,12 @@ curl -H 'X-API-Key: ops-secret-key' http://localhost:8080/api/v1/stats  # global
 
 | Variable | Default | Description |
 |---|---|---|
-| `API_KEY` | `""` | Static API key (leave empty for open access) |
+| `JWT_SECRET` | `change-me-in-production` | Signs user session tokens — **set this in prod** |
+| `BASE_URL` | `http://localhost:8080` | Public URL — used for Stripe redirect URLs |
+| `API_KEY` | `""` | Static API key (leave empty to use DB-backed keys) |
 | `ADMIN_KEY` | `""` | Operator key that bypasses per-key scoping |
 | `SERVER_HOST` | `0.0.0.0` | HTTP bind interface |
-| `SERVER_PORT` | `8080` | HTTP port (`PORT` also accepted for PaaS) |
+| `SERVER_PORT` | `8080` | HTTP listen port (`PORT` also accepted for PaaS) |
 | `SERVER_READ_TIMEOUT` | `15s` | |
 | `SERVER_WRITE_TIMEOUT` | `30s` | |
 | `SERVER_IDLE_TIMEOUT` | `120s` | |
@@ -388,40 +490,44 @@ curl -H 'X-API-Key: ops-secret-key' http://localhost:8080/api/v1/stats  # global
 | `DB_MIN_CONNS` | `2` | Min idle connections |
 | `DB_MAX_CONN_LIFETIME` | `30m` | |
 | `DB_MAX_CONN_IDLE_TIME` | `5m` | |
-| `REDIS_ADDR` | `localhost:6379` | |
-| `REDIS_PASSWORD` | `""` | |
-| `REDIS_DB` | `0` | |
-| `REDIS_TLS` | `false` | Set `true` for Upstash / TLS-only Redis |
+| `REDIS_ADDR` | `localhost:6379` | Redis address |
+| `REDIS_PASSWORD` | `""` | Redis auth password |
+| `REDIS_DB` | `0` | Redis database index |
+| `REDIS_TLS` | `false` | `true` for Upstash/TLS-only Redis |
 | `REDIS_DIAL_TIMEOUT` | `5s` | |
 | `REDIS_READ_TIMEOUT` | `3s` | |
 | `REDIS_WRITE_TIMEOUT` | `3s` | |
 | `WORKER_COUNT` | `5` | Concurrent worker goroutines |
 | `WORKER_HEARTBEAT_INTERVAL` | `10s` | |
-| `WORKER_POLL_INTERVAL` | `1s` | Empty-queue backoff |
+| `WORKER_POLL_INTERVAL` | `1s` | Empty-queue poll interval |
 | `WORKER_SHUTDOWN_TIMEOUT` | `30s` | Graceful drain deadline |
-| `RETRY_BASE_DELAY` | `5s` | Initial backoff |
+| `RETRY_BASE_DELAY` | `5s` | Initial backoff delay |
 | `RETRY_MAX_DELAY` | `1h` | Backoff cap |
-| `RETRY_DEFAULT_MAX_ATTEMPTS` | `5` | Global default |
+| `RETRY_DEFAULT_MAX_ATTEMPTS` | `5` | Global retry ceiling |
+| `STRIPE_SECRET_KEY` | `""` | Stripe API key (billing optional) |
+| `STRIPE_WEBHOOK_SECRET` | `""` | Stripe webhook signing secret |
+| `STRIPE_PRO_PRICE_ID` | `""` | Stripe Price ID for Pro tier |
+| `STRIPE_BUSINESS_PRICE_ID` | `""` | Stripe Price ID for Business tier |
 
 ---
 
-## CI / CD
-
-### CI (`ci.yml`)
-
-| Job | What |
-|---|---|
-| Lint | `golangci-lint` |
-| Vet | `go vet` |
-| Test | `go test -race` + coverage upload |
-| Security | `govulncheck` + `gosec` SARIF |
-
-### Docker (`docker.yml`)
-
-Multi-stage distroless image pushed to GHCR on every push to `master` and on `v*` tags.
+## Local Development
 
 ```bash
-docker pull ghcr.io/dhananjay6561/jobqueue:master
+# Start only the infrastructure (Postgres + Redis)
+docker compose up postgres redis -d
+
+# Run the server with race detector
+make run-race
+
+# Run tests
+make test-race
+
+# Coverage report
+make test-cover
+
+# Lint
+make lint
 ```
 
 ---
@@ -430,43 +536,47 @@ docker pull ghcr.io/dhananjay6561/jobqueue:master
 
 ```
 .
-├── cmd/server/            # Entry point — wires all components
+├── cmd/server/            # Main entry point — wires all components
 ├── internal/
 │   ├── api/
-│   │   ├── handler/       # HTTP handlers (jobs, cron, keys, workers, WS)
-│   │   ├── middleware/    # Auth, CORS, logger, rate limiter
+│   │   ├── handler/       # HTTP handlers (jobs, cron, auth, billing, keys, workers, WS)
+│   │   ├── middleware/    # Auth (JWT + API key), CORS, logger, rate limiter
 │   │   ├── metrics.go     # Prometheus handler
-│   │   └── router.go      # Route definitions
-│   ├── config/            # Env var parsing
-│   ├── queue/             # Broker (Redis), worker pool, retry, cron, events
-│   ├── store/             # PostgreSQL CRUD (jobs, DLQ, workers, webhooks, keys, cron)
-│   └── ws/                # WebSocket hub and client pumps
-├── migrations/            # SQL migration files (001–011, run at startup)
+│   │   └── router.go      # All route definitions
+│   ├── config/            # Environment variable parsing
+│   ├── queue/             # Redis broker, worker pool, retry logic, cron promoter, events
+│   ├── store/             # PostgreSQL CRUD — jobs, DLQ, workers, webhooks, keys, cron, users
+│   └── ws/                # WebSocket hub and client connection management
+├── migrations/            # SQL migration files — run automatically at startup
 ├── frontend/              # React dashboard (Vite + Tailwind + Zustand + TanStack Query)
 ├── sdk/
 │   ├── go/                # Go client SDK
-│   ├── node/              # Node.js client SDK (ESM + CJS + types)
-│   └── python/            # Python client SDK (sync + async, requires httpx)
+│   ├── node/              # Node.js SDK (ESM + CJS + TypeScript types)
+│   └── python/            # Python SDK (sync + async via httpx)
 ├── openapi.yaml           # OpenAPI 3.1 specification
-├── render.yaml            # One-click Render deployment
-├── docker-compose.yml
-├── Dockerfile
-└── Makefile
+├── render.yaml            # One-click Render deployment config
+├── docker-compose.yml     # Local development stack
+├── Dockerfile             # Multi-stage distroless production image
+└── Makefile               # Dev shortcuts
 ```
 
 ---
 
-## Local Development
+## CI / CD
+
+### CI (`ci.yml`)
+
+| Job | What it runs |
+|---|---|
+| Lint | `golangci-lint` |
+| Vet | `go vet ./...` |
+| Test | `go test -race` + coverage artifact |
+| Security | `govulncheck` + `gosec` SARIF upload |
+
+### Docker (`docker.yml`)
+
+Multi-stage distroless image pushed to GHCR on every push to `master` and on `v*` tags:
 
 ```bash
-# Start dependencies only
-docker compose up postgres redis -d
-
-cp .env.example .env
-go mod download
-
-make run-race      # run with race detector
-make test-race     # full test suite with race detector
-make test-cover    # coverage report
-make lint          # golangci-lint
+docker pull ghcr.io/dhananjay6561/jobqueue:master
 ```
