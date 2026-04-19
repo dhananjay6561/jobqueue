@@ -28,11 +28,11 @@ export interface LoginResponse {
 }
 
 export async function register(email: string, password: string): Promise<RegisterResponse> {
-  const { data } = await authClient.post<RegisterResponse>('/auth/register', { email, password })
-  return data
+  const { data } = await authClient.post<{ data: RegisterResponse }>('/auth/register', { email, password })
+  return data.data
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
-  const { data } = await authClient.post<LoginResponse>('/auth/login', { email, password })
-  return data
+  const { data } = await authClient.post<{ data: LoginResponse }>('/auth/login', { email, password })
+  return data.data
 }

@@ -16,14 +16,14 @@ portalClient.interceptors.request.use((config) => {
 })
 
 export async function createCheckout(tier: 'pro' | 'business', keyId?: string): Promise<string> {
-  const { data } = await portalClient.post<{ url: string }>('/portal/checkout', {
+  const { data } = await portalClient.post<{ data: { url: string } }>('/portal/checkout', {
     tier,
     key_id: keyId ?? '',
   })
-  return data.url
+  return data.data.url
 }
 
 export async function createCustomerPortal(): Promise<string> {
-  const { data } = await portalClient.post<{ url: string }>('/portal/customer-portal')
-  return data.url
+  const { data } = await portalClient.post<{ data: { url: string } }>('/portal/customer-portal')
+  return data.data.url
 }
