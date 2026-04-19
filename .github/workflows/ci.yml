@@ -11,9 +11,7 @@ permissions:
 
 env:
   GO_VERSION: "1.26.2"
-  # golangci-lint latest stable is built with Go 1.24 and cannot parse Go 1.26
-  # stdlib files. Use Go 1.23 for lint so the GOROOT stays within 1.24's range.
-  GO_VERSION_LINT: "1.23"
+  GO_VERSION_LINT: "1.26.2"
 
 jobs:
   lint:
