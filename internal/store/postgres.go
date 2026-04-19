@@ -91,6 +91,29 @@ func (db *DB) RunMigrations(ctx context.Context, migrationDir string) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
+	// Bootstrap: if schema_migrations is empty but the jobs table already exists,
+	// the DB was set up before migration tracking was introduced. Mark all
+	// migration files as applied without re-running them so we don't crash on
+	// non-idempotent statements (e.g. CREATE TYPE without IF NOT EXISTS).
+	var tracked int
+	_ = db.pool.QueryRow(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&tracked)
+	if tracked == 0 {
+		var jobsExists bool
+		_ = db.pool.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM information_schema.tables WHERE table_name='jobs' AND table_schema='public'
+		)`).Scan(&jobsExists)
+		if jobsExists {
+			db.logger.Info().Msg("bootstrapping schema_migrations — marking pre-existing migrations as applied")
+			entries, _ := os.ReadDir(migrationDir)
+			for _, e := range entries {
+				if !e.IsDir() {
+					_, _ = db.pool.Exec(ctx,
+						`INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING`, e.Name())
+				}
+			}
+		}
+	}
+
 	entries, err := os.ReadDir(migrationDir)
 	if err != nil {
 		return fmt.Errorf("read migration directory %q: %w", migrationDir, err)
