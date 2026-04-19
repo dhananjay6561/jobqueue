@@ -98,6 +98,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// Portal — JWT-protected user account routes.
 	r.Route("/portal", func(r chi.Router) {
 		r.Use(appMiddleware.JWTAuth(cfg.JWTSecret))
+		r.Get("/usage", authHandler.GetUsage)
 		r.Post("/checkout", billingHandler.CreateCheckout)
 		r.Post("/customer-portal", billingHandler.CustomerPortal)
 	})

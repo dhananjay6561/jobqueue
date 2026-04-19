@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { apiClient } from '@/api/client'
 import { createCheckout, createCustomerPortal } from '@/api/billing'
+import { portalClient } from '@/api/billing'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
 
@@ -48,8 +48,8 @@ export function Billing() {
   const [openingPortal, setOpeningPortal] = useState(false)
 
   const { data: usage, isLoading } = useQuery<UsageData>({
-    queryKey: ['usage'],
-    queryFn: () => apiClient.get('/usage').then((r) => r.data),
+    queryKey: ['portal-usage'],
+    queryFn: () => portalClient.get('/portal/usage').then((r) => r.data.data),
   })
 
   const success = params.get('success') === 'true'

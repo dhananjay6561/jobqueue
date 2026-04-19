@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	appMiddleware "github.com/dj/jobqueue/internal/api/middleware"
 	"github.com/dj/jobqueue/internal/queue"
 	"github.com/dj/jobqueue/internal/store"
 )
@@ -136,6 +137,34 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		"token": token,
 		"user":  user,
 		"keys":  keys,
+	})
+}
+
+// GetUsage handles GET /portal/usage — returns usage for the user's primary API key.
+func (h *AuthHandler) GetUsage(w http.ResponseWriter, r *http.Request) {
+	claims := appMiddleware.UserFromContext(r.Context())
+	if claims == nil {
+		writeError(w, r, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	keys, err := h.store.GetAPIKeysByUserID(r.Context(), claims.UserID)
+	if err != nil || len(keys) == 0 {
+		writeJSON(w, r, http.StatusOK, map[string]any{
+			"tier": "free", "jobs_used": 0, "jobs_limit": 1000,
+			"usage_percent": 0, "limit_reached": false,
+		})
+		return
+	}
+	k := keys[0]
+	writeJSON(w, r, http.StatusOK, map[string]any{
+		"tier":          k.Tier,
+		"jobs_used":     k.JobsUsed,
+		"jobs_limit":    k.JobsLimit,
+		"usage_percent": k.UsagePercent(),
+		"limit_reached": k.LimitReached(),
+		"reset_at":      k.ResetAt,
+		"key_id":        k.ID,
+		"key_prefix":    k.KeyPrefix,
 	})
 }
 

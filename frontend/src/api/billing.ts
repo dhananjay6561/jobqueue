@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 
-const portalClient = axios.create({
+export const portalClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 15000,
