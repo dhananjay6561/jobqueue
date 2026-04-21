@@ -42,4 +42,4 @@ lerna-debug.log*
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw?example-app/example-app
