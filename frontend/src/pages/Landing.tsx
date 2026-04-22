@@ -26,7 +26,7 @@ const features = [
   {
     icon: 'M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1',
     title: 'Webhook Delivery',
-    desc: 'Get notified on job lifecycle events. Register endpoints and let JobQueue push updates to you.',
+    desc: 'Get notified on job lifecycle events. Register endpoints and let Queuely push updates to you.',
   },
   {
     icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
@@ -96,7 +96,7 @@ export function Landing() {
                 <path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" />
               </svg>
             </div>
-            <span className="font-semibold text-sm tracking-tight font-mono">JobQueue</span>
+            <span className="font-semibold text-sm tracking-tight font-mono">Queuely</span>
           </div>
           <nav className="flex items-center gap-1">
             {token ? (
@@ -180,7 +180,7 @@ export function Landing() {
               <span className="w-3 h-3 rounded-full bg-red-500/60" />
               <span className="w-3 h-3 rounded-full bg-amber-500/60" />
               <span className="w-3 h-3 rounded-full bg-green-500/60" />
-              <span className="ml-3 text-xs text-[#6b6b8a] font-mono">JobQueue Dashboard</span>
+              <span className="ml-3 text-xs text-[#6b6b8a] font-mono">Queuely Dashboard</span>
             </div>
             <div className="p-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
@@ -349,7 +349,7 @@ export function Landing() {
                 <path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" />
               </svg>
             </div>
-            <span className="font-mono font-semibold text-[#e2e2f0]">JobQueue</span>
+            <span className="font-mono font-semibold text-[#e2e2f0]">Queuely</span>
             <span className="text-[#3a3a5e]">·</span>
             <span>© {new Date().getFullYear()}</span>
           </div>

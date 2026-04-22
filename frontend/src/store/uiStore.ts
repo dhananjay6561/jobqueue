@@ -67,7 +67,7 @@ export const useUiStore = create<UiStoreState>()(
       setApiKey: (key) => set({ apiKey: key }),
     }),
     {
-      name: 'jobqueue-ui',
+      name: 'queuely-ui',
       partialize: (state) => ({ apiKey: state.apiKey, sidebarCollapsed: state.sidebarCollapsed }),
     },
   ),

@@ -13,7 +13,7 @@ function Logo() {
           <path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" />
         </svg>
       </div>
-      <span className="font-semibold text-[#e2e2f0] font-mono">JobQueue</span>
+      <span className="font-semibold text-[#e2e2f0] font-mono">Queuely</span>
     </div>
   )
 }
@@ -258,7 +258,7 @@ export function Auth() {
             type="button"
             disabled={loading}
             onClick={async () => {
-              const demoEmail = 'demo@jobqueue.dev'
+              const demoEmail = 'demo@queuely.dev'
               const demoPass = 'demo1234'
               setEmail(demoEmail)
               setPassword(demoPass)

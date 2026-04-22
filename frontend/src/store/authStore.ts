@@ -25,7 +25,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: () => !!get().token,
     }),
     {
-      name: 'jobqueue-auth',
+      name: 'queuely-auth',
       partialize: (state) => ({ token: state.token, user: state.user }),
     },
   ),

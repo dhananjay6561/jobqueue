@@ -1,8 +1,8 @@
-# JobQueue
+# Queuely
 
 > Distributed job queue with a real-time dashboard, cron scheduling, dead letter queue, and webhook delivery — all over a clean REST API.
 
-JobQueue is a self-hostable background job processing system. Developers enqueue jobs via HTTP, workers process them concurrently, and the dashboard surfaces everything in real time via WebSocket.
+Queuely is a self-hostable background job processing system. Developers enqueue jobs via HTTP, workers process them concurrently, and the dashboard surfaces everything in real time via WebSocket.
 
 ## Key capabilities
 

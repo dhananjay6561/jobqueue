@@ -61,7 +61,7 @@ export function Sidebar() {
             animate={{ opacity: 1 }}
             className="font-semibold text-[#e2e2f0] text-sm tracking-tight whitespace-nowrap font-mono"
           >
-            JobQueue
+            Queuely
           </motion.span>
         )}
       </div>

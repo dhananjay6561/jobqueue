@@ -15,14 +15,14 @@ apiClient.interceptors.request.use((config) => {
   config.headers['X-Request-ID'] = crypto.randomUUID()
   try {
     // JWT takes priority — if logged in, backend resolves key from JWT
-    const authStored = localStorage.getItem('jobqueue-auth')
+    const authStored = localStorage.getItem('queuely-auth')
     const token: string = authStored ? (JSON.parse(authStored)?.state?.token ?? '') : ''
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`
       return config
     }
     // Fallback: raw API key (for users who pasted a key manually)
-    const uiStored = localStorage.getItem('jobqueue-ui')
+    const uiStored = localStorage.getItem('queuely-ui')
     const key: string = uiStored ? (JSON.parse(uiStored)?.state?.apiKey ?? '') : ''
     if (key) config.headers['X-API-Key'] = key
   } catch {
