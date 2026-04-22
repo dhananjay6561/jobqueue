@@ -8,6 +8,7 @@ import { DeadLetterQueue } from '@/pages/DeadLetterQueue'
 import CronPage from '@/pages/Cron'
 import { Auth } from '@/pages/Auth'
 import { Billing } from '@/pages/Billing'
+import { Landing } from '@/pages/Landing'
 import { useAuthStore } from '@/store/authStore'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -31,9 +32,10 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Landing />} />
           <Route path="auth" element={<Auth />} />
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-            <Route index element={<Dashboard />} />
+            <Route path="dashboard" element={<Dashboard />} />
             <Route path="jobs" element={<Jobs />} />
             <Route path="workers" element={<Workers />} />
             <Route path="dlq" element={<DeadLetterQueue />} />

@@ -1,0 +1,27 @@
+# JobQueue
+
+> Distributed job queue with a real-time dashboard, cron scheduling, dead letter queue, and webhook delivery — all over a clean REST API.
+
+JobQueue is a self-hostable background job processing system. Developers enqueue jobs via HTTP, workers process them concurrently, and the dashboard surfaces everything in real time via WebSocket.
+
+## Key capabilities
+
+- **Job queues**: Enqueue JSON payloads to named queues with per-job retry limits and exponential backoff.
+- **Distributed workers**: Scale worker goroutines independently. Each heartbeats so the system detects and recovers from failures automatically.
+- **Real-time dashboard**: WebSocket-powered UI shows live job status, worker health, throughput stats, and queue depth — no polling.
+- **Dead letter queue (DLQ)**: Jobs that exhaust retries land in the DLQ. Operators can inspect the payload, requeue, or discard.
+- **Cron scheduling**: Define recurring jobs with standard cron expressions. Promotions to the active queue are handled automatically.
+- **Webhook delivery**: Register HTTP endpoints to receive job lifecycle events (enqueued, started, completed, failed, dead).
+- **API-first**: Everything is a REST endpoint. Authenticate with `X-API-Key` or JWT. Per-key usage limits enforced server-side.
+
+## Pricing
+
+- **Free**: 1,000 jobs/month — no credit card required.
+- **Pro** ($29/mo): 100,000 jobs/month — coming soon.
+- **Business** ($99/mo): Unlimited jobs — coming soon.
+
+## Links
+
+- Homepage: https://yourdomain.com
+- GitHub: https://github.com/dhananjay6561/jobqueue
+- Sign up: https://yourdomain.com/auth

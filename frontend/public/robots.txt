@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /jobs
+Disallow: /workers
+Disallow: /dlq
+Disallow: /cron
+Disallow: /billing
+Disallow: /auth
+
+Sitemap: https://yourdomain.com/sitemap.xml
