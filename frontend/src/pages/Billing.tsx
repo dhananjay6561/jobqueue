@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { createCheckout, createCustomerPortal, regenerateKey, type RegeneratedKey } from '@/api/billing'
+import { /*createCheckout,*/ createCustomerPortal, regenerateKey, type RegeneratedKey } from '@/api/billing'
 import { portalClient } from '@/api/billing'
 import { useAuthStore } from '@/store/authStore'
 import { useUiStore } from '@/store/uiStore'
@@ -44,7 +44,7 @@ export function Billing() {
   const [params] = useSearchParams()
   const { user } = useAuthStore()
   const { addToast } = useUiStore()
-  const [upgrading, setUpgrading] = useState<string | null>(null)
+  // const [upgrading, setUpgrading] = useState<string | null>(null)
   const [openingPortal, setOpeningPortal] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [newKey, setNewKey] = useState<RegeneratedKey | null>(null)
@@ -56,17 +56,17 @@ export function Billing() {
 
   const success = params.get('success') === 'true'
 
-  async function handleUpgrade(tier: 'pro' | 'business') {
-    if (!user) { navigate('/auth'); return }
-    setUpgrading(tier)
-    try {
-      const url = await createCheckout(tier)
-      window.location.href = url
-    } catch (err: unknown) {
-      addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Checkout failed' })
-      setUpgrading(null)
-    }
-  }
+  // async function handleUpgrade(tier: 'pro' | 'business') {
+  //   if (!user) { navigate('/auth'); return }
+  //   setUpgrading(tier)
+  //   try {
+  //     const url = await createCheckout(tier)
+  //     window.location.href = url
+  //   } catch (err: unknown) {
+  //     addToast({ variant: 'error', message: err instanceof Error ? err.message : 'Checkout failed' })
+  //     setUpgrading(null)
+  //   }
+  // }
 
   async function handlePortal() {
     setOpeningPortal(true)
@@ -170,13 +170,16 @@ export function Billing() {
                     </li>
                   ))}
                 </ul>
-                <button
+                {/* <button
                   onClick={() => handleUpgrade(plan.tier)}
                   disabled={upgrading === plan.tier}
                   className="w-full py-2 rounded-lg bg-[#7c6af7] hover:bg-[#6a58e0] disabled:opacity-50 text-white text-sm font-medium transition-colors"
                 >
                   {upgrading === plan.tier ? 'Redirecting…' : `Upgrade to ${plan.name}`}
-                </button>
+                </button> */}
+                <div className="w-full py-2 rounded-lg bg-[#1e1e2e] border border-[#2a2a3e] text-center text-sm font-medium text-[#6b6b8a] cursor-default select-none">
+                  Coming Soon
+                </div>
               </div>
             ))}
           </div>
