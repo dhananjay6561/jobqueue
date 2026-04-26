@@ -32,9 +32,6 @@ func APIKeyAuth(staticKey, adminKey string, keyStore apiKeyStorer, jwtSecret str
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// ── 1. Admin key ──────────────────────────────────────────────
 			supplied := r.Header.Get("X-API-Key")
-			if supplied == "" {
-				supplied = r.URL.Query().Get("api_key")
-			}
 			if adminKey != "" && supplied == adminKey {
 				ctx := context.WithValue(r.Context(), adminCtxKey{}, true)
 				next.ServeHTTP(w, r.WithContext(ctx))
