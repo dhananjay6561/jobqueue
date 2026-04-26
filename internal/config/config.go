@@ -141,7 +141,7 @@ func Load() (Config, error) {
 	cfg.Server.SMTPFrom = envString("SMTP_FROM", "noreply@jobqueue.dev")
 	// Render (and many PaaS) inject PORT; fall back to SERVER_PORT then 8080.
 	if os.Getenv("SERVER_PORT") == "" && os.Getenv("PORT") != "" {
-		os.Setenv("SERVER_PORT", os.Getenv("PORT"))
+		_ = os.Setenv("SERVER_PORT", os.Getenv("PORT"))
 	}
 	if cfg.Server.Port, err = envInt("SERVER_PORT", 8080); err != nil {
 		return cfg, fmt.Errorf("SERVER_PORT: %w", err)
