@@ -10,6 +10,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,9 +29,9 @@ import (
 // via the constructor and stored as unexported fields so each method is a pure
 // function of its inputs.
 type JobHandler struct {
-	store           store.JobStorer
-	broker          queue.Broker
-	publisher       queue.EventPublisher
+	store              store.JobStorer
+	broker             queue.Broker
+	publisher          queue.EventPublisher
 	defaultMaxAttempts int
 }
 
@@ -42,9 +43,9 @@ func NewJobHandler(
 	defaultMaxAttempts int,
 ) *JobHandler {
 	return &JobHandler{
-		store:           jobStore,
-		broker:          broker,
-		publisher:       publisher,
+		store:              jobStore,
+		broker:             broker,
+		publisher:          publisher,
 		defaultMaxAttempts: defaultMaxAttempts,
 	}
 }
@@ -352,9 +353,9 @@ func (h *JobHandler) GetJobResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(result)
+	_ = json.NewEncoder(w).Encode(json.RawMessage(result))
 }
 
 // CancelJob handles DELETE /api/v1/jobs/:id.
@@ -549,7 +550,7 @@ func (h *JobHandler) RequeueDLQJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, r, http.StatusCreated, map[string]any{
-		"new_job":    createdJob,
+		"new_job":      createdJob,
 		"dlq_entry_id": id,
 	})
 }
