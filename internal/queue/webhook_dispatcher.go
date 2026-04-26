@@ -68,12 +68,14 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, event Event) {
 		if !containsEvent(hook.Events, eventStr) {
 			continue
 		}
-		go d.deliver(hook, body)
+		go d.deliver(context.WithoutCancel(ctx), hook, body)
 	}
 }
 
-func (d *WebhookDispatcher) deliver(hook *Webhook, body []byte) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, hook.URL, bytes.NewReader(body))
+func (d *WebhookDispatcher) deliver(ctx context.Context, hook *Webhook, body []byte) {
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, hook.URL, bytes.NewReader(body))
 	if err != nil {
 		log.Error().Err(err).Str("url", hook.URL).Msg("webhook: failed to create request")
 		return
