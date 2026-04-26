@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -22,17 +23,17 @@ import (
 
 // RouterConfig bundles all dependencies required to build the router.
 type RouterConfig struct {
-	Store              store.JobStorer
-	UserStore          store.UserStorer
-	Broker             queue.Broker
-	Hub                *ws.Hub
-	Publisher          queue.EventPublisher
-	DefaultMaxAttempts int
-	RateLimitRPS       int
-	RateLimitBurst     int
-	StaticDir          string // path to built frontend; empty = no UI served
-	APIKey             string // when non-empty, /api/v1/* requires X-API-Key
-	AdminKey           string // when non-empty, requests with this key bypass scoping
+	Store                 store.JobStorer
+	UserStore             store.UserStorer
+	Broker                queue.Broker
+	Hub                   *ws.Hub
+	Publisher             queue.EventPublisher
+	DefaultMaxAttempts    int
+	RateLimitRPS          int
+	RateLimitBurst        int
+	StaticDir             string // path to built frontend; empty = no UI served
+	APIKey                string // when non-empty, /api/v1/* requires X-API-Key
+	AdminKey              string // when non-empty, requests with this key bypass scoping
 	JWTSecret             string
 	StripeSecretKey       string
 	StripeWebhookSecret   string
@@ -164,9 +165,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 			// If the requested file exists, serve it; otherwise fall back to
 			// index.html so the React router handles the path.
-			path := cfg.StaticDir + r.URL.Path
+			path := filepath.Join(cfg.StaticDir, filepath.Clean(r.URL.Path))
 			if _, err := os.Stat(path); os.IsNotExist(err) {
-				http.ServeFile(w, r, cfg.StaticDir+"/index.html")
+				http.ServeFile(w, r, filepath.Join(cfg.StaticDir, "index.html"))
 				return
 			}
 			fs.ServeHTTP(w, r)
@@ -180,9 +181,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 // healthResponse is the JSON payload returned by GET /health.
 type healthResponse struct {
-	Status   string            `json:"status"`
-	Checks   map[string]string `json:"checks"`
-	Uptime   string            `json:"uptime"`
+	Status string            `json:"status"`
+	Checks map[string]string `json:"checks"`
+	Uptime string            `json:"uptime"`
 }
 
 // startTime is set once at package init so /health can report process uptime.
@@ -233,4 +234,3 @@ func healthHandler(jobStore store.JobStorer, broker queue.Broker) http.HandlerFu
 		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
-
