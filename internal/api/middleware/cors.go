@@ -5,6 +5,8 @@ package middleware
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	chiCORS "github.com/go-chi/cors"
 )
@@ -12,9 +14,14 @@ import (
 // CORS returns a Chi-compatible CORS middleware configured for a job-queue
 // dashboard. Adjust AllowedOrigins before deploying to production.
 func CORS(next http.Handler) http.Handler {
+	allowedOrigins := []string{"*"}
+	if envOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); envOrigins != "" {
+		allowedOrigins = strings.Split(envOrigins, ",")
+	}
+
 	cors := chiCORS.New(chiCORS.Options{
 		// AllowedOrigins: restrict to your dashboard domain in production.
-		AllowedOrigins: []string{"*"},
+		AllowedOrigins: allowedOrigins,
 		AllowedMethods: []string{
 			http.MethodGet,
 			http.MethodPost,
